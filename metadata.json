@@ -1,0 +1,6 @@
+{
+  "name": "CampusFlow - Unified Campus Services & Virtual Queue Platform",
+  "description": "All-in-one campus services platform featuring real-time virtual queuing, multi-location load balancing, demand and capacity management, and operational wait analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

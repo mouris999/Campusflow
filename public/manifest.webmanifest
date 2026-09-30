@@ -1,0 +1,19 @@
+{
+  "name": "CampusFlow — Unified Campus Services",
+  "short_name": "CampusFlow",
+  "description": "Find campus services, compare wait times, join virtual queues and reserve study seats.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#121315",
+  "theme_color": "#121315",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

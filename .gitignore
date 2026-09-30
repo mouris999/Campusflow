@@ -1,0 +1,19 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+.vercel
+
+# Runtime data. Never commit this.
+#   data/.session-secret          the HMAC key that signs session + CSRF tokens
+#   data/campusflow.json          the database, including user_credentials (password hashes)
+#   data/campusflow-traffic.json  the traffic / peak demand model
+#
+# The schema is code (server/db.ts) and the seed is code, so the store rebuilds
+# itself on first run. Losing this directory is recoverable; leaking it is not.
+data/
+*.session-secret
