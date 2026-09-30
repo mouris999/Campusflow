@@ -51,6 +51,7 @@
 | Client write coverage guard | ✅ | `tests/csrf-coverage.test.ts`; `FIX.md` #7 |
 | KPI formula documentation | ✅ | `docs/KPIS.md` |
 | Full documentation set | ✅ | 11 documents; `tests/docs.test.ts` keeps them present and true |
+| Published to GitHub | ✅ | `github.com/mouris999/Campusflow`, `main`; `data/` excluded, verified 404 from the public internet |
 
 ## 3. Open work
 

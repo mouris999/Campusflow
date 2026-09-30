@@ -1,6 +1,7 @@
 # CampusFlow — Project Dashboard
 
 **Last updated:** 2026-09-30 · **Deployment:** `https://campus-flow-sigma-six.vercel.app`
+**Repository:** `https://github.com/mouris999/Campusflow` (public, `main`)
 **Health:** `{"status":"ok","storage":"ephemeral"}`
 
 > The single page to look at to know where the project stands. Updated in the same

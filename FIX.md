@@ -6,8 +6,9 @@
 > **Rule R19: a fix ships with a regression test.** A bug fixed without one is not
 > fixed, it is hidden.
 >
-> Count: **8 bugs** — 3 shipped to production, 1 self-inflicted during this work,
-> 1 test defect, 3 found by testing before release.
+> Count: **10 bugs** — 3 shipped to production, 2 self-inflicted during this
+> work, 1 test defect, 1 caught while preparing a public push, 3 found by testing
+> before release.
 
 ---
 
@@ -24,6 +25,50 @@
 | 7 | 🔴 Critical | Security | **Fixed — self-inflicted** | Live browser testing |
 | 8 | 🟡 Low | Test quality | Fixed | Test suite at 19:00 IST |
 | 9 | 🟠 High | Tooling / docs | **Fixed — self-inflicted** | Reading files back after editing |
+| 10 | 🔴 Critical | Repo hygiene | Fixed | Preparing the first public push |
+
+---
+
+## #10 · The public repo was one commit away from leaking the session key
+
+**Severity** 🔴 Critical · **Area** Repository hygiene · **Status** Fixed
+
+**Symptom** The target repository `github.com/mouris999/Campusflow` already
+existed and was **public**. `.gitignore` covered `.env*`, `node_modules/` and
+`dist/`, but **not** `data/`.
+
+**Why that mattered** `data/` contained:
+
+| File | Contents |
+| --- | --- |
+| `.session-secret` | the 64-char hex HMAC key that signs session **and CSRF** tokens |
+| `campusflow.json` | the database, including `user_credentials` — scrypt password hashes for every seeded account |
+| `campusflow-traffic.json` | 1 MB of traffic / peak demand data |
+
+Committing that to a public repository would have exposed the signing key used by
+the live deployment. Anyone could then mint a valid session cookie for any user,
+including an admin. Password hashes would also be world-readable, and the demo
+credentials in this repository are published in `README.md` by design — so those
+hashes correspond to passwords that are already known.
+
+**Fix** Added `data/` and `*.session-secret` to `.gitignore` with a comment
+explaining what each file holds and why the loss is recoverable but the leak is
+not. Then, before committing:
+
+1. `git check-ignore -q` on every sensitive path — all four confirmed ignored.
+2. Scanned all 100 files destined for the commit for the **actual** secret value,
+   a Google API key pattern, and a GitHub token pattern — clean.
+3. After pushing, verified from the public internet that `data/` returns 404, and
+   that both raw secret paths return 404.
+4. Cloned the public repo fresh and confirmed 100 files, no `data/`.
+
+**Prevention** `MEMORY.md` §1 records the gitignore requirement and the
+`git check-ignore` one-liner to run before any commit.
+
+**Lesson** `.env*` being ignored creates a false sense of safety. The signing key
+was not in `.env` — it was generated into `data/` at first run, so it sat
+outside the pattern that a reviewer would think to check. Secrets are wherever
+the code writes them, not where the ignore file expects them.
 
 ---
 

@@ -31,9 +31,25 @@ This breaks npm and PowerShell `cd` shims, which silently misparse. Consequences
 3000 and 3001 are usually occupied. Dev uses **3010**, production preview **3011**.
 Set with `$env:PORT=3010`.
 
-### Not a git repository
-No commits, branches, or pushes exist. Every change is an uncommitted
-working-tree edit. Do not report "committed" or "pushed" — that would be false.
+### Git
+The project **is** a git repository, tracking
+`https://github.com/mouris999/Campusflow.git` (branch `main`). The public repo
+carries two commits: `197360a Initial commit` and `aa79129`.
+
+**`data/` is gitignored and must stay that way.** It holds `.session-secret`
+(the HMAC key that signs session and CSRF tokens) and `campusflow.json` (which
+contains `user_credentials`, i.e. scrypt password hashes). The repository is
+**public**, so a leak is not something to fix quietly afterwards. Before any
+commit, confirm with `git check-ignore -q -- data/.session-secret`.
+
+Committing is possible without the `gh` CLI: Git Credential Manager is
+configured at system level and already holds credentials for this account, so
+`git push` succeeds even with `GIT_TERMINAL_PROMPT=0`.
+
+The **global** git identity on this machine is `Test <test@test.com>`, which is
+not this account. A local identity is set to
+`mouris999 <mouris999@users.noreply.github.com>`; repair a bad author with
+`git commit --amend --reset-author --no-edit`.
 
 ## 2. Commands that work
 
