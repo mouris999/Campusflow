@@ -305,6 +305,24 @@ export function csrfGuard(req: Request, res: Response, next: NextFunction): void
     return;
   }
 
+  // Sign-in is exempt from the token check, and must stay exempt.
+  //
+  // Login *establishes* a session rather than acting with one, so there is no
+  // ambient authority for a third-party site to ride. Requiring a token derived
+  // from the existing session has a real, observed failure: a browser carrying
+  // any session cookie - including a stale, expired, or same-host cookie left by
+  // another deployment - cannot sign in at all, and is locked out on a CSRF
+  // error. The Origin check still applies to login, which is the part that
+  // actually matters against a cross-site sign-in attempt.
+  if (isSignInRoute(req)) {
+    if (originMatchesHost(req)) {
+      next();
+      return;
+    }
+    res.status(403).json({ success: false, error: 'Request blocked: cross-origin sign-in refused.' });
+    return;
+  }
+
   // A JSON client that sends no cookies at all is not doing ambient-authority
   // work, so there is nothing for a third-party site to ride on.
   const cookies = parseCookies(req.headers.cookie);
@@ -314,32 +332,9 @@ export function csrfGuard(req: Request, res: Response, next: NextFunction): void
     return;
   }
 
-  const origin = req.headers.origin;
-  const referer = req.headers.referer;
-  const host = req.headers.host;
-
-  if (origin) {
-    let originHost = '';
-    try {
-      originHost = new URL(origin).host;
-    } catch {
-      res.status(403).json({ success: false, error: 'Request blocked: invalid Origin header.' });
-      return;
-    }
-    if (host && originHost !== host) {
-      res.status(403).json({ success: false, error: 'Request blocked: cross-origin request refused.' });
-      return;
-    }
-  } else if (referer && host) {
-    try {
-      if (new URL(referer).host !== host) {
-        res.status(403).json({ success: false, error: 'Request blocked: cross-origin request refused.' });
-        return;
-      }
-    } catch {
-      res.status(403).json({ success: false, error: 'Request blocked: invalid Referer header.' });
-      return;
-    }
+  if (!originMatchesHost(req)) {
+    res.status(403).json({ success: false, error: 'Request blocked: cross-origin request refused.' });
+    return;
   }
 
   const header = req.headers[CSRF_HEADER];
@@ -354,6 +349,47 @@ export function csrfGuard(req: Request, res: Response, next: NextFunction): void
     success: false,
     error: 'Request blocked: missing or invalid CSRF token. Refresh the page and try again.'
   });
+}
+
+/** True for the sign-in route, whether mounted at /auth or behind /api. */
+function isSignInRoute(req: Request): boolean {
+  const path = (req.originalUrl ?? req.url ?? '').split('?')[0];
+  return path === '/auth/login' || path === '/api/auth/login';
+}
+
+/**
+ * True when the request's Origin, or failing that its Referer, is the same host
+ * it was sent to.
+ *
+ * A header that is present but unparseable is refused rather than treated as
+ * absent, so a malformed Origin cannot be used to skip the check.
+ */
+function originMatchesHost(req: Request): boolean {
+  const host = req.headers.host;
+  const origin = req.headers.origin;
+
+  if (origin) {
+    try {
+      if (host && new URL(origin).host !== host) return false;
+    } catch {
+      return false;
+    }
+    return true;
+  }
+
+  const referer = req.headers.referer;
+  if (referer) {
+    if (!host) return true;
+    try {
+      return new URL(referer).host === host;
+    } catch {
+      return false;
+    }
+  }
+
+  // Neither header present. Same-origin browser XHR sends at least one, so this
+  // is a non-browser client; the token check still applies to it.
+  return true;
 }
 
 // ------------------------------------------------------------- middleware

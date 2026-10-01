@@ -40,6 +40,13 @@ export interface Campus {
   name: string;
   code: string;
   timezone: string;
+  /**
+   * Real campus centre in WGS84. The 3D campus and the service map plan are
+   * both drawn from OpenStreetMap geometry around this point, so the two
+   * always describe the same place.
+   */
+  centre_lat?: number;
+  centre_lon?: number;
 }
 
 export interface Building {
@@ -54,6 +61,18 @@ export interface Building {
     y: number;
     svg_path?: string;
   };
+  /**
+   * The OpenStreetMap element this building was captured from, when it is a real
+   * surveyed structure. Absent on CampusFlow service locations, which are the
+   * product's own places and make no claim about a specific building.
+   */
+  osm_element_id?: string;
+  /**
+   * True when this row describes a real surveyed structure rather than a
+   * CampusFlow service location. The UI labels these differently so a reader can
+   * tell measured geometry from a product concept.
+   */
+  is_real_survey?: boolean;
 }
 
 export interface Counter {

@@ -19,6 +19,9 @@ import {
 import { useTraffic } from '../context/TrafficContext.js';
 import { effectiveTrafficState } from '../lib/trafficState.js';
 import { TrafficBadge } from './traffic/TrafficBits.js';
+import { campusRouteGraph, ROUTE_SPEED_IS_ASSUMED } from '../lib/campusRoute.js';
+import { projectLayout } from '../lib/campusLayout.js';
+import { RealCampusPlan } from './RealCampusPlan.js';
 
 interface CampusMapProps {
   onSelectService: (service: Service) => void;
@@ -66,18 +69,38 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     return true;
   });
 
-  // Calculate Euclidean walking distance & minutes between route origin and selected building
+  /**
+   * Walking distance between the route origin and the selected building.
+   *
+   * Measured along the real OpenStreetMap path network via the route graph, not
+   * estimated from map percentages. A previous version multiplied the schematic
+   * x/y difference by a made-up scale factor of 9.5 and labelled the result
+   * "distanceMeters" - that produced a plausible but invented number, which the
+   * no-invented-data rule forbids.
+   *
+   * When the real network has no connection between the two points, this returns
+   * null and the UI says so rather than drawing a straight line.
+   */
   const walkingRouteData = useMemo(() => {
     if (!routeOriginBuilding || !selectedBuilding || routeOriginBuilding.id === selectedBuilding.id) {
-      return { distanceMeters: 0, walkMins: 0, isSame: true };
+      return { distanceMeters: 0, walkMins: 0, isSame: true, real: true, reason: null as string | null };
     }
-    const dx = selectedBuilding.map_coords.x - routeOriginBuilding.map_coords.x;
-    const dy = selectedBuilding.map_coords.y - routeOriginBuilding.map_coords.y;
-    // Map scale: 1 unit ~ 10 meters on campus quad
-    const distanceMeters = Math.round(Math.sqrt(dx * dx + dy * dy) * 9.5);
-    // Walking speed: ~80 meters per minute
-    const walkMins = Math.max(1, Math.round(distanceMeters / 80));
-    return { distanceMeters, walkMins, isSame: false };
+
+    const from = projectLayout(routeOriginBuilding);
+    const to = projectLayout(selectedBuilding);
+    const result = campusRouteGraph().route(from, to);
+
+    if (!result.ok) {
+      return { distanceMeters: 0, walkMins: 0, isSame: false, real: false, reason: result.reason };
+    }
+
+    return {
+      distanceMeters: result.distance_m,
+      walkMins: Math.max(1, Math.round(result.duration_s / 60)),
+      isSame: false,
+      real: true,
+      reason: null as string | null
+    };
   }, [routeOriginBuilding, selectedBuilding]);
 
   if (!selectedBuilding || buildings.length === 0) {
@@ -153,11 +176,17 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         <div className="flex items-center gap-4 text-xs font-bold">
           {walkingRouteData.isSame ? (
             <span className="text-emerald-400">You are already at this building</span>
-          ) : (
+          ) : walkingRouteData.real ? (
             <div className="flex items-center gap-3 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-              <span className="text-slate-400">EST. WALK:</span>
+              <span className="text-slate-400">WALK:</span>
               <span className="text-amber-400 font-black text-sm">~{walkingRouteData.walkMins} MINS</span>
-              <span className="text-slate-500">({walkingRouteData.distanceMeters}m across Quad)</span>
+              <span className="text-slate-500">({walkingRouteData.distanceMeters} m along the mapped path)</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+              <span className="text-slate-400">
+                No mapped walking route between these buildings.
+              </span>
             </div>
           )}
         </div>
@@ -178,31 +207,16 @@ export const CampusMap: React.FC<CampusMapProps> = ({
             </div>
           </div>
 
-          {/* SVG Map Canvas */}
+          {/* Real campus plan, drawn from OpenStreetMap geometry.
+              This replaces a decorative SVG that was not a map of anything:
+              a fabricated "Central Quad" circle, three invented walkway curves,
+              and a caption reading "UNIVERSITY CENTRAL QUAD - 1892" for a
+              university that does not exist. The plan renders into the same
+              0..100 space, so the service pins and route line are unchanged. */}
           <div className="relative w-full h-[420px] my-auto">
-            <svg
-              className="w-full h-full"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-            >
-              <defs>
-                <pattern id="campus-grid-lines" width="10" height="10" patternUnits="userSpaceOnUse">
-                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#1e293b" strokeWidth="0.4" />
-                </pattern>
-              </defs>
-              <rect width="100" height="100" fill="#090d16" />
-              <rect width="100" height="100" fill="url(#campus-grid-lines)" />
-
-              {/* Central Quad Park Landscape */}
-              <circle cx="50" cy="50" r="20" fill="#14281f" opacity="0.6" stroke="#22543d" strokeWidth="0.5" strokeDasharray="1,1" />
-
-              {/* Walkways */}
-              <path d="M 28 35 Q 50 50 80 65" fill="none" stroke="#334155" strokeWidth="2.5" strokeDasharray="2,2" />
-              <path d="M 45 15 L 50 50 L 20 70" fill="none" stroke="#334155" strokeWidth="2.5" strokeDasharray="2,2" />
-              <path d="M 68 30 L 50 50 L 52 55" fill="none" stroke="#334155" strokeWidth="2.5" strokeDasharray="2,2" />
-
-              {/* Wayfinding Route Line if between two different buildings */}
-              {!walkingRouteData.isSame && routeOriginBuilding && selectedBuilding && (
+            <RealCampusPlan>
+              {/* Wayfinding route, drawn on the real plan */}
+              {!walkingRouteData.isSame && walkingRouteData.real && routeOriginBuilding && selectedBuilding && (
                 <line
                   x1={routeOriginBuilding.map_coords.x}
                   y1={routeOriginBuilding.map_coords.y}
@@ -214,18 +228,20 @@ export const CampusMap: React.FC<CampusMapProps> = ({
                   className="animate-pulse"
                 />
               )}
+            </RealCampusPlan>
 
-              {/* Central Quad Title */}
-              <text x="50" y="49" fill="#475569" fontSize="2.8" fontFamily="monospace" textAnchor="middle" fontWeight="bold">
-                UNIVERSITY CENTRAL QUAD • 1892
-              </text>
-            </svg>
-
-            {/* Buildings as interactive architectural pins */}
+            {/* Buildings as interactive architectural pins.
+                A real surveyed structure gets a solid marker and no wait badge,
+                because no CampusFlow service is attached to it yet - showing
+                "~0m" there would be an invented figure. CampusFlow service
+                locations show their live wait, and are marked as projected
+                until an administrator confirms a real building. */}
             {buildings.map(building => {
               const stats = buildingStats[building.id] || { totalQueue: 0, maxWait: 0, serviceCount: 0, isCongested: false };
               const isSelected = selectedBuildingId === building.id;
               const isRouteOrigin = routeOriginId === building.id;
+              const isReal = Boolean(building.is_real_survey);
+              const hasServices = stats.serviceCount > 0;
 
               const badgeColor =
                 stats.maxWait >= 25 ? 'bg-rose-500 text-white font-mono' :
@@ -241,6 +257,9 @@ export const CampusMap: React.FC<CampusMapProps> = ({
                     transform: 'translate(-50%, -50%)'
                   }}
                   onClick={() => setSelectedBuildingId(building.id)}
+                  title={isReal
+                    ? `${building.name} - real structure from OpenStreetMap${building.osm_element_id ? ` (${building.osm_element_id})` : ''}`
+                    : `${building.name} - CampusFlow service location`}
                   className={`absolute cursor-pointer transition-all z-20 group ${
                     isSelected ? 'scale-110 z-30' : 'hover:scale-105'
                   }`}
@@ -250,16 +269,27 @@ export const CampusMap: React.FC<CampusMapProps> = ({
                       ? 'bg-indigo-950 border-indigo-400 ring-4 ring-indigo-500/30'
                       : isRouteOrigin
                       ? 'bg-purple-950/90 border-purple-400 ring-2 ring-purple-500/30'
-                      : 'bg-slate-900/95 border-slate-700 hover:border-slate-500'
+                      : isReal
+                      ? 'bg-slate-800/95 border-emerald-600/60'
+                      : 'bg-slate-900/95 border-slate-700 border-dashed hover:border-slate-500'
                   }`}>
                     <div className="flex items-center gap-1.5">
-                      <Building2 className={`w-3.5 h-3.5 ${isSelected ? 'text-indigo-300' : 'text-slate-400'}`} />
+                      <Building2 className={`w-3.5 h-3.5 ${isSelected ? 'text-indigo-300' : isReal ? 'text-emerald-400' : 'text-slate-400'}`} />
                       <span className="text-xs font-mono font-black text-white">
                         {building.code}
                       </span>
-                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-black shadow-sm ${badgeColor}`}>
-                        ~{stats.maxWait}m
-                      </span>
+                      {hasServices ? (
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-black shadow-sm ${badgeColor}`}>
+                          ~{stats.maxWait}m
+                        </span>
+                      ) : (
+                        <span
+                          className="px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-600/25 text-emerald-300 border border-emerald-500/40"
+                          title="Real surveyed structure with no CampusFlow service attached"
+                        >
+                          REAL
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-[10px] font-sans font-bold text-slate-300 truncate max-w-[120px] mt-0.5">
@@ -267,9 +297,15 @@ export const CampusMap: React.FC<CampusMapProps> = ({
                     </div>
 
                     <div className="text-[9px] font-mono text-slate-400 mt-0.5 flex items-center gap-1">
-                      <span>{stats.totalQueue} waiting</span>
-                      <span>•</span>
-                      <span>{stats.serviceCount} counters</span>
+                      {hasServices ? (
+                        <>
+                          <span>{stats.totalQueue} waiting</span>
+                          <span>•</span>
+                          <span>{stats.serviceCount} counters</span>
+                        </>
+                      ) : (
+                        <span className="text-emerald-400/80">no service linked</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -278,7 +314,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           </div>
 
           <div className="text-[11px] font-mono text-slate-500 text-center z-10 pt-2 border-t border-slate-800">
-            CLICK ANY CAMPUS BUILDING TO INSPECT COUNTERS &amp; ELEVATION
+            REAL BUILDINGS FROM OPENSTREETMAP · DASHED PINS ARE CAMPUSFLOW SERVICE LOCATIONS
           </div>
         </div>
 

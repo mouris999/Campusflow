@@ -334,3 +334,59 @@ test('50 parallel joins with one idempotency key still create a single ticket', 
   );
   assert.equal(active.length, 1, 'only one live ticket exists after 50 concurrent joins');
 });
+
+// ------------------------------------------------- sign-in lockout guard
+
+test('sign-in works even when the browser carries a session cookie', async () => {
+  // Regression guard for an observed lockout. The CSRF guard originally demanded
+  // a token derived from the session cookie on every write, including sign-in.
+  // A browser holding any session cookie - stale, expired, or left by another
+  // deployment on the same host - was then refused with a CSRF error and could
+  // not sign in at all. Login establishes a session rather than using one, so
+  // it must not require a token.
+  const stale = 'cf_session=eyJ1IjoiMSIsImlhdCI6MSwiZXhwIjo5OTk5OTk5OTk5OSwiciI6MH0.badsignature';
+  const res = await fetch(`${app.base}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: stale },
+    body: JSON.stringify({ email: 'alex.rivera@metrouni.edu', password: 'student123' })
+  });
+  assert.notEqual(res.status, 403, 'a stale session cookie must not block sign-in');
+  assert.equal(res.status, 200);
+});
+
+test('a cross-origin sign-in is still refused', async () => {
+  // The exemption is only from the token check. Origin is still enforced, which
+  // is what actually blocks a third-party page from signing a visitor in.
+  const res = await fetch(`${app.base}/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: 'https://evil.example.com',
+      Host: new URL(app.base).host
+    },
+    body: JSON.stringify({ email: 'alex.rivera@metrouni.edu', password: 'student123' })
+  });
+  assert.equal(res.status, 403);
+  assert.match((await res.json()).error, /cross-origin/i);
+});
+
+test('a same-origin sign-in is accepted', async () => {
+  const res = await fetch(`${app.base}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: app.base },
+    body: JSON.stringify({ email: 'alex.rivera@metrouni.edu', password: 'student123' })
+  });
+  assert.equal(res.status, 200);
+});
+
+test('the CSRF token is still required for every other write', async () => {
+  // The sign-in exemption must not have weakened anything else.
+  const s = await signIn(app.base, 'alex.rivera@metrouni.edu', 'student123');
+  const res = await fetch(`${app.base}/queue/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: s.cookie },
+    body: JSON.stringify({ service_id: 'srv-canteen-main' })
+  });
+  assert.equal(res.status, 403, 'joining a queue still needs the token');
+  assert.match((await res.json()).error, /CSRF/i);
+});

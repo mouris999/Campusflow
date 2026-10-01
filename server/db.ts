@@ -29,6 +29,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_FILE = path.join(DATA_DIR, 'campusflow.json');
 
+/**
+ * An admin-confirmed link between a CampusFlow building and a real OpenStreetMap
+ * element, so the 3D campus can place a service on a surveyed building instead of
+ * guessing. Absence of a link is a valid, non-error state: the 3D view then falls
+ * back to the schematic layout and says so.
+ */
+export interface CampusLink {
+  campusflow_building_id: string;
+  osm_element_id: string;
+  /** OSM element name at the time of linking, for display and audit. */
+  osm_element_name?: string | null;
+  verified_by?: string | null;
+  verified_at?: string | null;
+  note?: string | null;
+}
+
 export interface DatabaseSchema {
   campuses: Campus[];
   buildings: Building[];
@@ -54,6 +70,12 @@ export interface DatabaseSchema {
   ticket_counters: Record<string, number>;
   /** user_id -> instant before which that user's sessions are revoked. */
   session_revocation: Record<string, number>;
+  /**
+   * Admin-confirmed links from a CampusFlow building to a real OpenStreetMap
+   * element id, so the 3D campus can place a service on a surveyed building.
+   * A 3D position is only treated as verified when a row exists here.
+   */
+  campus_links: CampusLink[];
 }
 
 // SSE Subscriber management
@@ -189,19 +211,102 @@ function generateEmptyShape(): DatabaseSchema {
     seats: [],
     seat_reservations: [],
     ticket_counters: {},
-    session_revocation: {}
+    session_revocation: {},
+    campus_links: []
   };
 }
 
 function generateInitialSeed(): DatabaseSchema {
   const campus: Campus = {
     id: 'camp-main',
-    name: 'Metropolitan University Central Campus',
-    code: 'MU-CENTRAL',
-    timezone: 'America/New_York'
+    name: 'Galgotias University, Greater Noida',
+    code: 'GU-CENTRAL',
+    timezone: 'Asia/Kolkata',
+    // Real centre, confirmed by the campus owner. The 3D campus and the service
+    // map plan are both drawn from survey data around this point.
+    centre_lat: 28.365858,
+    centre_lon: 77.542225
   };
 
   const buildings: Building[] = [
+    /* ------------------------------------------------------------------
+     * Real Galgotias University structures.
+     *
+     * These come from OpenStreetMap. map_coords is the real footprint's
+     * centroid projected into the plan's 0-100 space, so each pin sits on the
+     * surveyed building rather than on a guess. osm_element_id is the source
+     * element, and is_real_survey tells the UI to mark them as real.
+     *
+     * OpenStreetMap names only a handful of campus features, so only those
+     * appear here. The remaining real footprints are drawn on the plan and in
+     * the 3D campus, and an administrator confirms which is which from the
+     * admin tools rather than the system guessing.
+     * ------------------------------------------------------------------ */
+    {
+      id: 'bld-gu-bblock',
+      campus_id: 'camp-main',
+      name: 'B-Block (Galgotias University)',
+      code: 'B-BLK',
+      floor_count: 4,
+      description: 'Real building footprint from OpenStreetMap, 3,586 square metres.',
+      map_coords: { x: 48.2, y: 53.6 },
+      osm_element_id: 'w630317459',
+      is_real_survey: true
+    },
+    {
+      id: 'bld-gu-cblock',
+      campus_id: 'camp-main',
+      name: 'C-Block (Galgotias University)',
+      code: 'C-BLK',
+      floor_count: 4,
+      description: 'Real building footprint from OpenStreetMap, 3,814 square metres.',
+      map_coords: { x: 51.8, y: 46.4 },
+      osm_element_id: 'w630317457',
+      is_real_survey: true
+    },
+    {
+      id: 'bld-gu-hospitality',
+      campus_id: 'camp-main',
+      name: 'School of Hospitality',
+      code: 'HOS',
+      floor_count: 3,
+      description:
+        'Real OpenStreetMap feature. Mapped as a point rather than a polygon, so it carries no footprint and shows no building massing.',
+      map_coords: { x: 48.1, y: 52.9 },
+      osm_element_id: 'n11009755111',
+      is_real_survey: true
+    },
+    {
+      id: 'bld-gu-sports',
+      campus_id: 'camp-main',
+      name: 'Sports Ground',
+      code: 'SPT',
+      floor_count: 1,
+      description: 'Real open ground from OpenStreetMap, 26,588 square metres.',
+      map_coords: { x: 61.8, y: 46.5 },
+      osm_element_id: 'w1426897615',
+      is_real_survey: true
+    },
+    {
+      id: 'bld-gu-basketball',
+      campus_id: 'camp-main',
+      name: 'BasketBall Ground',
+      code: 'BSK',
+      floor_count: 1,
+      description: 'Real sports pitch from OpenStreetMap, 1,920 square metres.',
+      map_coords: { x: 60.5, y: 45.5 },
+      osm_element_id: 'w1426897616',
+      is_real_survey: true
+    },
+
+    /* ------------------------------------------------------------------
+     * CampusFlow service locations.
+     *
+     * These carry the live queue, booking and seating data. They are the
+     * product's own service locations, NOT claims about a specific surveyed
+     * structure: until an administrator links one to a real OpenStreetMap
+     * building, the map reports it as "projected", never as "verified".
+     * ------------------------------------------------------------------ */
     {
       id: 'bld-adm',
       campus_id: 'camp-main',
@@ -1029,7 +1134,8 @@ function generateInitialSeed(): DatabaseSchema {
     seats: buildSeedSeats(),
     seat_reservations: [],
     ticket_counters: {},
-    session_revocation: {}
+    session_revocation: {},
+    campus_links: []
   };
 }
 
@@ -1214,6 +1320,11 @@ class Database {
 
     if (!data.session_revocation) {
       data.session_revocation = {};
+      changed = true;
+    }
+
+    if (!Array.isArray(data.campus_links)) {
+      data.campus_links = [];
       changed = true;
     }
 
@@ -2257,6 +2368,83 @@ class Database {
   public setSessionRevocationFloor(userId: string, at: number): void {
     this.data.session_revocation[userId] = at;
     this.saveData();
+  }
+
+  // -------------------------------------------------- campus 3D links
+
+  /**
+   * Links a CampusFlow building to a real OSM element.
+   *
+   * One link per building: re-linking replaces the previous target, because two
+   * verified positions for one service would be ambiguous on the 3D map.
+   */
+  public linkCampusBuilding(
+    campusflowBuildingId: string,
+    osmElementId: string,
+    actor: { id: string; name: string },
+    note?: string
+  ): { success: boolean; link?: CampusLink; error?: string } {
+    const building = this.getBuildings().find(b => b.id === campusflowBuildingId);
+    if (!building) return { success: false, error: 'CampusFlow building not found.' };
+
+    const link: CampusLink = {
+      campusflow_building_id: campusflowBuildingId,
+      osm_element_id: osmElementId,
+      verified_by: actor.name,
+      verified_at: new Date().toISOString(),
+      note: note ?? null
+    };
+
+    const existing = this.data.campus_links.findIndex(
+      l => l.campusflow_building_id === campusflowBuildingId
+    );
+    if (existing >= 0) this.data.campus_links[existing] = link;
+    else this.data.campus_links.push(link);
+
+    this.data.audit_logs.unshift({
+      id: `aud-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      timestamp: new Date().toISOString(),
+      actor_id: actor.id,
+      actor_name: actor.name,
+      actor_role: 'admin',
+      action: 'CAMPUS_LINK_SET',
+      details: `Linked ${building.name} to OpenStreetMap element ${osmElementId}.`,
+      service_id: undefined
+    } as any);
+
+    this.saveData();
+    return { success: true, link };
+  }
+
+  /** Removes a link. The 3D map then falls back to the schematic position. */
+  public unlinkCampusBuilding(
+    campusflowBuildingId: string,
+    actor: { id: string; name: string }
+  ): { success: boolean; error?: string } {
+    const before = this.data.campus_links.length;
+    this.data.campus_links = this.data.campus_links.filter(
+      l => l.campusflow_building_id !== campusflowBuildingId
+    );
+    if (this.data.campus_links.length === before) {
+      return { success: false, error: 'No link exists for that building.' };
+    }
+
+    this.data.audit_logs.unshift({
+      id: `aud-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      timestamp: new Date().toISOString(),
+      actor_id: actor.id,
+      actor_name: actor.name,
+      actor_role: 'admin',
+      action: 'CAMPUS_LINK_REMOVED',
+      details: `Removed the surveyed-position link for ${campusflowBuildingId}. The 3D campus now shows a projected position.`
+    } as any);
+
+    this.saveData();
+    return { success: true };
+  }
+
+  public getCampusLinks(): CampusLink[] {
+    return this.data.campus_links;
   }
 
   // ------------------------------------------------------------------ SEATING

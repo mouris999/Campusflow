@@ -52,9 +52,12 @@ deliberate public decision, visible in the source.
 ## 3. Security rules
 
 **R11. Every state change is CSRF-protected.** Both the `Origin` check and the
-token check. Any new client write goes through `secureWrite()` or
-`request()` — a bare `fetch(..., {method:'POST'})` is a bug.
-*Why:* five such paths shipped broken before the guard test caught them.
+token check — except sign-in, which establishes a session rather than using
+one and is exempted from the token check only. Any new client write goes
+through `secureWrite()` or `request()`; a bare `fetch(..., {method:'POST'})`
+is a bug.
+*Why:* five such paths shipped broken before the guard test caught them,
+and the over-broad guard then locked users out of signing in entirely.
 
 **R12. Least privilege.** A student may act only on their own records
 (`requireSelfOrRole`). Horizontal access (IDOR) and vertical access (role

@@ -57,6 +57,26 @@ hides what the server would refuse anyway — defence in depth, not the control.
 - **Offline operation** — service worker shell, cached reads, outbox with idempotency replay, blocked actions explained rather than faked
 - **Security hardening** — CSRF protection, session revocation, collision-free ticket codes, missed-turn protection
 
+### 4.3 Added 2026-10-01 — the real campus
+
+The campus is **Galgotias University, Greater Noida**. The map is no longer a
+stylised diagram: it is the actual place, with CampusFlow's live data on top.
+
+- **3D campus** — a WebGL scene built from 336 real OpenStreetMap building
+  footprints, 178 roads and paths, 5 sports pitches and the real land-use
+  polygons, over live Esri satellite imagery
+- **Service map** — the 2D plan redrawn from the same survey geometry, replacing a
+  decorative SVG that contained an invented "Central Quad" and a fabricated
+  founding year. The existing pins, filters, lists and route panel are unchanged
+- **Measured walking routes** — Dijkstra over the real walkable network, with the
+  off-path approach reported separately. An unmapped pair says so instead of
+  drawing a straight line
+- **Admin building confirmation** — a persisted, audited link from a CampusFlow
+  service to a real building. Live figures appear on a structure only once a
+  person has confirmed it
+- **Provenance everywhere** — surveyed, projected and assumed are visually and
+  textually distinct. A building with no linked service shows no figures at all
+
 ## 5. Non-negotiable product rules
 
 These are product requirements, not implementation details. See `RULES.md`.
@@ -68,8 +88,11 @@ These are product requirements, not implementation details. See `RULES.md`.
 3. **Offline never fabricates.** No optimistic fake tokens, seats, or orders.
 4. **Privacy by default.** Students appear to each other only as ticket codes; names
    and IDs are redacted server-side, not hidden with CSS.
-5. **Honest about its own limits.** Ephemeral storage, stale data, and low-confidence
-   forecasts are surfaced to the user, not hidden.
+5. **Honest about its own limits.** Ephemeral storage, stale data, low-confidence
+   forecasts, and coverage gaps are surfaced to the user, not hidden.
+6. **Never invent a place.** A real campus is drawn from real survey data. A
+   feature the source data does not contain is not placed at a made-up
+   coordinate, and a building with no confirmed service shows no figures.
 
 ## 6. Success metrics
 

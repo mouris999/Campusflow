@@ -17,7 +17,8 @@ import { MyActivity } from './components/MyActivity.js';
 import { MyPass } from './components/MyPass.js';
 import { PlanVisit } from './components/PlanVisit.js';
 import { StorageNotice } from './components/StorageNotice.js';
-import { CampusMap } from './components/CampusMap.js';
+import { CampusView } from './components/CampusView.js';
+import './components/Campus3D.css';
 import { AdminAnalytics } from './components/AdminAnalytics.js';
 import { StaffOperations } from './components/StaffOperations.js';
 import { NotificationDrawer } from './components/NotificationDrawer.js';
@@ -118,12 +119,10 @@ const MainAppContent: React.FC = () => {
         )}
 
         {activeTab === 'map' && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-            <CampusMap
-              onSelectService={srv => setServiceForModal(srv)}
-              onJoinQueue={srv => setServiceToJoin(srv)}
-            />
-          </div>
+          <CampusView
+            onSelectService={srv => setServiceForModal(srv)}
+            onJoinQueue={srv => setServiceToJoin(srv)}
+          />
         )}
 
         {activeTab === 'traffic' && (

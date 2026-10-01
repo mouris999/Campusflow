@@ -161,6 +161,53 @@ apiRouter.post('/auth/logout', (req, res) => {
   res.json({ success: true, cleared_session: true });
 });
 
+/**
+ * 3D campus links.
+ *
+ * Public read, because the student-facing 3D map needs to know which positions
+ * are admin-verified versus projected. Writes are admin-only and audited.
+ */
+apiRouter.get('/campus/links', (_req, res) => {
+  res.json({ success: true, links: db.getCampusLinks() });
+});
+
+apiRouter.post('/campus/links', requireRole('admin'), (req, res) => {
+  const actor = (req as AuthenticatedRequest).user!;
+  const buildingId = String(req.body?.campusflow_building_id ?? '');
+  const osmId = String(req.body?.osm_element_id ?? '');
+  if (!buildingId || !osmId) {
+    res.status(400).json({
+      success: false,
+      error: 'Both campusflow_building_id and osm_element_id are required.'
+    });
+    return;
+  }
+  const result = db.linkCampusBuilding(
+    buildingId,
+    osmId,
+    { id: actor.id, name: actor.name },
+    req.body?.note
+  );
+  if (!result.success) {
+    res.status(400).json({ success: false, error: result.error });
+    return;
+  }
+  res.json({ success: true, link: result.link });
+});
+
+apiRouter.delete('/campus/links/:buildingId', requireRole('admin'), (req, res) => {
+  const actor = (req as AuthenticatedRequest).user!;
+  const result = db.unlinkCampusBuilding(req.params.buildingId, {
+    id: actor.id,
+    name: actor.name
+  });
+  if (!result.success) {
+    res.status(400).json({ success: false, error: result.error });
+    return;
+  }
+  res.json({ success: true });
+});
+
 /** Who am I? Drives the client boot sequence. */
 apiRouter.get('/auth/session', (req, res) => {
   const authed = req as AuthenticatedRequest;

@@ -19,6 +19,9 @@
 | Storage | JSON document store | — | See §7. **Interim**; a database adapter is the agreed next step |
 | Real-time | Server-Sent Events | — | One-way server→client push; no proxy/upgrade complexity |
 | Icons | lucide-react | 0.546 | Consistent stroke weight, tree-shakeable |
+| 3D | three.js | 0.186 | WebGL campus scene; code-split so it never blocks first paint |
+| Campus geometry | OpenStreetMap (ODbL) | captured 2026-09-30 | Real footprints, roads and land use; committed, not fetched at runtime |
+| Satellite imagery | Esri World Imagery | runtime tiles | Real aerial imagery, no API key; attribution displayed |
 
 ### Deliberately rejected
 - **Higgsfield / Cloudflare Workers + D1 + Durable Objects** — a different
@@ -187,7 +190,7 @@ Secrets are read from the environment only. **No secret is in source.**
 
 ## 10. Testing
 
-`node --import tsx --test tests/*.test.ts` — 11 suites, **161 tests**.
+`node --import tsx --test tests/*.test.ts` — 13 suites, **202 tests**.
 
 | Suite | Tests | Covers |
 | --- | --- | --- |
@@ -200,6 +203,8 @@ Secrets are read from the environment only. **No secret is in source.**
 | `token.test.ts` | 11 | virtual token issuance and views |
 | `intent.test.ts` | 10 | natural-language service resolution |
 | `explain.test.ts` | 10 | "why is it long?" grounded in computed factors |
+| `campus3d.test.ts` | 23 | real OSM geometry, measured routes, no invented values |
+| `campus-links.test.ts` | 14 | admin-only building links, audited |
 | `csrf-coverage.test.ts` | 7 | **every client write carries the token** |
 | `docs.test.ts` | 11 | **documentation stays present and true** |
 

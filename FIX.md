@@ -6,8 +6,8 @@
 > **Rule R19: a fix ships with a regression test.** A bug fixed without one is not
 > fixed, it is hidden.
 >
-> Count: **10 bugs** — 3 shipped to production, 2 self-inflicted during this
-> work, 1 test defect, 1 caught while preparing a public push, 3 found by testing
+> Count: **14 bugs** — 3 shipped to production, 3 self-inflicted during this
+> work, 1 test defect, 1 found while preparing a public push, 6 found by testing
 > before release.
 
 ---
@@ -26,6 +26,10 @@
 | 8 | 🟡 Low | Test quality | Fixed | Test suite at 19:00 IST |
 | 9 | 🟠 High | Tooling / docs | **Fixed — self-inflicted** | Reading files back after editing |
 | 10 | 🔴 Critical | Repo hygiene | Fixed | Preparing the first public push |
+| 11 | 🔴 Critical | Auth | **Fixed — self-inflicted** | A real user could not sign in |
+| 12 | 🟠 High | Map / data honesty | Fixed | Reading the existing 2D map against the spec |
+| 13 | 🟠 High | 3D / UI | Fixed | Console error while drawing the real plan |
+| 14 | 🟡 Low | Repo hygiene | **Fixed — self-inflicted** | Console output showed mangled characters |
 
 ---
 
@@ -334,6 +338,128 @@ them would falsify the record of what was true at the time. Current counts live
 in `DASHBOARD.md` and are enforced by `tests/docs.test.ts`.
 
 ---
+
+## #11 · Sign-in was impossible for any browser holding a session cookie ⚠️ self-inflicted
+
+**Severity** 🔴 Critical · **Area** Auth · **Status** Fixed
+
+**Symptom** The sign-in screen rejected a valid username and password with
+`Request blocked: missing or invalid CSRF token. Refresh the page and try again.`
+The user was locked out entirely.
+
+**Root cause** The CSRF guard added in #6 demanded a token derived from the
+session cookie on **every** state-changing request, including `POST /auth/login`.
+The guard's "no session cookie means nothing to protect" escape hatch only helped
+a visitor with no cookie at all. A browser holding **any** `cf_session` cookie —
+stale, expired, or left on the same host by a different deployment — was required
+to present a token derived from that cookie, and the login request never sends
+one, so the server refused it every time.
+
+Cookies are scoped to host, not port, so two CampusFlow deployments on
+`localhost` share cookies and the failure reproduces during ordinary local work.
+On production it triggers whenever a user has an old session cookie.
+
+**Why it is right to exempt sign-in** Login *establishes* a session rather than
+acting with one. There is no ambient authority for a third-party site to ride, so
+the token buys nothing there. The part that does matter against a cross-site
+sign-in attempt — the `Origin`/`Referer` check — is kept.
+
+**Fix**
+- `isSignInRoute()` exempts `/auth/login` (and `/api/auth/login`) from the
+  **token** check only. The `Origin` check still runs and still refuses a
+  cross-origin sign-in with `403`.
+- `originMatchesHost()` was extracted so both paths share one implementation, and
+  a present-but-unparseable `Origin` is now refused rather than treated as
+  absent.
+- Every other write is unchanged and still requires the token.
+
+**Regression tests** four new tests in `tests/security.test.ts`:
+sign-in succeeds while carrying a stale cookie; a cross-origin sign-in is still
+refused; a same-origin sign-in is accepted; and the token is still required for
+every other write, so the exemption cannot widen later.
+
+**Lesson** A security control applied uniformly is not automatically correct.
+The question is what authority the request *acts with*, and login acts with none.
+
+## #12 · The 2D service map drew a campus that does not exist
+
+**Severity** 🟠 High · **Area** Map / data honesty · **Status** Fixed
+
+**Symptom** The service map showed a dark grid, a large circle labelled a "Central
+Quad", three dashed bezier curves as "Walkways", and the caption
+**"UNIVERSITY CENTRAL QUAD • 1892"** — a founding year for a university that does
+not exist. It looked nothing like the actual campus.
+
+**Root cause** The SVG was hand-authored decoration. Every element was invented:
+the quad circle, the walkway curves, the grid, and the date. The CampusFlow campus
+was a fiction ("Metropolitan University Central Campus") with no real location.
+
+**Two separate problems, both fixed**
+
+1. **The plan was fake.** Replaced with `RealCampusPlan.tsx`, which draws the real
+   campus: 336 OpenStreetMap building footprints, 178 roads and paths, 5 sports
+   pitches, plus green space, water and parking, in the plan's existing `0-100`
+   space so the service pins and route line were untouched. Sports pitches are
+   dashed so they cannot be misread as buildings, only source-named features are
+   labelled, and OSM/Esri attribution is always visible.
+
+2. **Walking distance was invented.** `CampusMap.tsx` computed
+   `Math.sqrt(dx * dx + dy * dy) * 9.5` from the schematic map percentages,
+   annotated `// Map scale: 1 unit ~ 10 meters on campus quad`, and displayed the
+   result as `distanceMeters` — a plausible number with no basis in any real
+   measurement. It now runs Dijkstra over the real walkable OpenStreetMap network
+   and, when no real path exists, says so instead of drawing a straight line.
+
+**The route graph had its own bug, found by the fix.** Building nodes only where
+ways shared an exact vertex left the network fragmented, so almost every route
+reported "not connected". Nodes are now created at every real vertex, ways are
+joined within a 12 m crossing radius, and the on-foot approach at each end is
+measured and reported separately rather than folded silently into the total.
+
+**Regression test** `campus3d.test.ts` greps `CampusMap.tsx` for `* 9.5` and for
+`Math.sqrt(dx * dx + dy * dy)`, so the fudge factor cannot return.
+
+## #13 · The real plan crashed on a feature OpenStreetMap maps as a point
+
+**Severity** 🟠 High · **Area** 3D / UI · **Status** Fixed
+
+**Symptom** Switching to the service map threw
+`TypeError: ring is not iterable at centroid (RealCampusPlan.tsx)` and rendered a
+blank panel.
+
+**Root cause** The School of Hospitality is mapped in OpenStreetMap as a **node**,
+not a polygon, so its record has `x`/`y` and no `footprint`. The plan assumed every
+named feature was a polygon and passed `undefined` into a loop over vertices.
+
+**Fix** `anchorOf()` resolves a feature to its polygon centroid or, failing that,
+to its real point coordinate. Point-mapped features are drawn with a dot and a
+smaller label so they are not mistaken for surveyed outlines. **No footprint was
+invented for it** — the test *"a point-mapped feature must not be given a
+fabricated footprint"* asserts this.
+
+**Lesson** Real open data is messier than a schema suggests. Building a renderer
+against the shape I expected rather than the shape that exists is how this breaks.
+
+## #14 · PowerShell corrupted a document's encoding ⚠️ self-inflicted
+
+**Severity** 🟡 Low · **Area** Repo hygiene · **Status** Fixed
+
+**Symptom** `DASHBOARD.md` showed `✅` as `?o`, `→` as `?`, and `—` as `?` in the
+console.
+
+**Root cause** `[System.IO.File]::WriteAllLines` writes using the default ANSI
+encoding on Windows PowerShell, not UTF-8. `[System.IO.File]::WriteAllText` had
+preserved UTF-8 correctly all along, which is why earlier bulk edits were fine and
+this one was not.
+
+**Fix** Rewrote the file with the UTF-8-safe file-write tool, then scanned every
+`.md`, `.ts`, `.tsx`, `.css` and `.json` file in the repository for U+FFFD
+replacement characters. None remain.
+
+**Prevention** Recorded in `MEMORY.md` §1: use the file-write tool or
+`WriteAllText`; never `WriteAllLines` for content containing non-ASCII. This is
+the second time a bulk PowerShell edit has caused damage (see #9), for a different
+reason, and both times the only thing that caught it was reading the file back.
 
 ## Not bugs — verified correct behaviour
 Recorded so they are not "fixed" later by mistake.

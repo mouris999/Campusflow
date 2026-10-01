@@ -52,6 +52,9 @@
 | KPI formula documentation | ✅ | `docs/KPIS.md` |
 | Full documentation set | ✅ | 11 documents; `tests/docs.test.ts` keeps them present and true |
 | Published to GitHub | ✅ | `github.com/mouris999/Campusflow`, `main`; `data/` excluded, verified 404 from the public internet |
+| Interactive 3D campus on real geometry | ✅ | `src/three/*`, real OSM footprints (336 buildings, 178 roads, 5 pitches), Esri satellite, live traffic beacons |
+| Service map redrawn from real survey data | ✅ | `RealCampusPlan.tsx` replaced a decorative SVG that was not a map of anything |
+| Admin building-position confirmation | ✅ | `campus_links` table + `CampusLinkAdmin.tsx`; live figures only appear where confirmed |
 
 ## 3. Open work
 
