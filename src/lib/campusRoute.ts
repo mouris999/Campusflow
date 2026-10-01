@@ -23,10 +23,40 @@ export const ROUTE_SPEED_IS_ASSUMED = true;
  * Radius within which two road vertices are treated as the same junction.
  *
  * OpenStreetMap ways meet at angles and frequently do not share an exact
- * vertex, so a graph built only from shared vertices comes out fragmented and
- * almost every route reports "no path". 12 m is a realistic crossing width.
+ * vertex, so a graph built only from shared vertices comes out fragmented.
+ * 15 m is a realistic crossing width and comfortably covers the gap between a
+ * road and its parallel footpath.
  */
-const JUNCTION_RADIUS_M = 12;
+const JUNCTION_RADIUS_M = 15;
+
+/**
+ * Longest edge allowed in the graph, in metres.
+ *
+ * Snapping resolves a query point to the nearest *vertex*, so a 200 m straight
+ * segment whose vertices sit only at its ends leaves every point along it
+ * unreachable. Measured on the real network, that put one campus building at an
+ * infinite distance from any path. Edges are split so an entrance always has a
+ * vertex within reach.
+ */
+const MAX_EDGE_M = 8;
+
+/** Splits a polyline so no segment is longer than `MAX_EDGE_M`. */
+function densify(line: [number, number][]): [number, number][] {
+  if (line.length < 2) return line.slice();
+  const out: [number, number][] = [];
+  for (let i = 0; i < line.length - 1; i++) {
+    const [ax, ay] = line[i];
+    const [bx, by] = line[i + 1];
+    const length = Math.hypot(bx - ax, by - ay);
+    const steps = Math.max(1, Math.ceil(length / MAX_EDGE_M));
+    for (let s = 0; s < steps; s++) {
+      const t = s / steps;
+      out.push([ax + (bx - ax) * t, ay + (by - ay) * t]);
+    }
+  }
+  out.push(line[line.length - 1]);
+  return out;
+}
 
 /** How far a point may sit from the walkable network before we refuse. */
 const MAX_APPROACH_M = 150;
@@ -78,18 +108,21 @@ export class CampusRouteGraph {
   private readonly cellSize = JUNCTION_RADIUS_M;
   private readonly grid = new Map<string, number[]>();
   private readonly roads: CampusRoad[];
+  /** Road lines split so vertices are dense enough to snap onto. */
+  private lines: [number, number][][] = [];
 
   constructor(roads: CampusRoad[] = CAMPUS_GEOMETRY.roads) {
     this.roads = roads.filter(r => isWalkable(r.highway));
 
-    // Pass 1: a node at every real road vertex, so no coordinate is invented.
-    for (const road of this.roads) {
-      for (const [x, y] of road.line) this.nodeAt(x, y);
+    // Pass 1: a node at every vertex of every densified line, so no coordinate
+    // is invented and an entrance always has a nearby vertex.
+    this.lines = this.roads.map(road => densify(road.line));
+    for (const line of this.lines) {
+      for (const [x, y] of line) this.nodeAt(x, y);
     }
 
     // Pass 2: edges along each road, using true segment lengths.
-    for (const road of this.roads) {
-      const line = road.line;
+    for (const line of this.lines) {
       for (let i = 0; i < line.length - 1; i++) {
         const a = this.nearestNode(line[i][0], line[i][1]);
         const b = this.nearestNode(line[i + 1][0], line[i + 1][1]);
@@ -147,13 +180,18 @@ export class CampusRouteGraph {
     return index;
   }
 
-  /** Node indices within one cell radius of a point. */
+  /**
+   * Node indices near a point, wide enough to cover JUNCTION_RADIUS_M in every
+   * direction. Two nodes exactly the radius apart can fall two cells apart
+   * diagonally, so a 3x3 scan would silently miss those junctions.
+   */
   private nearby(x: number, y: number): number[] {
     const cx = Math.floor(x / this.cellSize);
     const cy = Math.floor(y / this.cellSize);
+    const span = Math.ceil(JUNCTION_RADIUS_M / this.cellSize) + 1;
     const out: number[] = [];
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
+    for (let i = -span; i <= span; i++) {
+      for (let j = -span; j <= span; j++) {
         const list = this.grid.get(`${cx + i}:${cy + j}`);
         if (list) out.push(...list);
       }
@@ -161,14 +199,23 @@ export class CampusRouteGraph {
     return out;
   }
 
-  /** Nearest graph node to a point, searched outward a few cells. */
+  /**
+   * Nearest graph node to a point.
+   *
+   * Searches outward far enough that a building whose entrance is set back from
+   * the footpath still resolves. How close is close *enough* to claim a route is
+   * a separate policy decision, made in `route()` against MAX_APPROACH_M, so
+   * this function stays purely mechanical.
+   */
   private nearestNode(x: number, y: number): number | null {
     const cx = Math.floor(x / this.cellSize);
     const cy = Math.floor(y / this.cellSize);
     let best: number | null = null;
     let bestDist = Infinity;
 
-    for (let ring = 0; ring <= 6; ring++) {
+    // 14 cells at 12 m covers 168 m, past MAX_APPROACH_M, so `route()` always
+    // gets a node and can make the honest yes/no decision itself.
+    for (let ring = 0; ring <= 14; ring++) {
       for (let i = -ring; i <= ring; i++) {
         for (let j = -ring; j <= ring; j++) {
           if (ring > 0 && Math.abs(i) !== ring && Math.abs(j) !== ring) continue;
@@ -183,9 +230,9 @@ export class CampusRouteGraph {
           }
         }
       }
-      // Two cells is enough for any building entrance on a real campus. Stop
-      // rather than inventing a very long approach.
-      if (best !== null && ring >= 2) return best;
+      // Once a node is found there is nothing a wider ring can improve by more
+      // than the cell size, so stop early.
+      if (best !== null) return best;
     }
     return best;
   }

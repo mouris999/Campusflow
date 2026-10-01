@@ -16,7 +16,7 @@
 | | |
 | --- | --- |
 | **Build** | ✅ green — typecheck clean, production build clean |
-| **Tests** | ✅ **202 / 202 passing** across 13 suites |
+| **Tests** | ✅ **216 / 216 passing** across 13 suites |
 | **Deployed** | ✅ production, verified live in a browser |
 | **Campus geometry** | ✅ real — 336 building footprints, 178 roads, 5 sports pitches from OpenStreetMap |
 | **Satellite imagery** | ✅ live — Esri World Imagery, 1.19 m/px, attribution displayed |
@@ -30,9 +30,14 @@
 | Check | Command | Result |
 | --- | --- | --- |
 | Types | `node node_modules\typescript\bin\tsc --noEmit` | ✅ 0 errors |
-| Tests | `node --import tsx --test tests/*.test.ts` | ✅ 202/202 |
+| Tests | `node --import tsx --test tests/*.test.ts` | ✅ 216/216 |
 | Build | `node node_modules\vite\bin\vite.js build` | ✅ `dist/` in ~0.6 s |
 | API health | `GET /api/health` | ✅ `status: ok` |
+- **Measured scene cost:** 540 draw calls, 8,238 triangles for the whole campus,
+  inside the asserted budget. Frame rate could not be measured in the verification
+  environment: the tab is backgrounded and browsers throttle `requestAnimationFrame`,
+  so any reading would be fiction. Draw calls and triangles are stable facts and are
+  published on the canvas.
 | Initial bundle | — | 468 kB JS / **126 kB gzip** (3D and geometry are code-split out) |
 | 3D chunk | — | loaded on demand, never blocks first paint |
 
@@ -70,7 +75,7 @@ A block comment in the 3D view and the plan attribution say the same thing.
 | `seating.test.ts` | 28 | allocation, expiry, windows, concurrency |
 | `auth.test.ts` | 23 | login, hashing, RBAC, IDOR, rate limiting |
 | `api.test.ts` | 22 | endpoint contracts, alternatives, peaks |
-| `campus3d.test.ts` | 23 | real OSM geometry, measured routes, no invented values |
+| `campus3d.test.ts` | 26 | real OSM geometry, measured routes, no invented values |
 | `security.test.ts` | 20 | CSRF, sign-in lockout, revocation, ticket codes, grace, 50-way races |
 | `prediction.test.ts` | 11 | estimator, confidence, MAE |
 | `token.test.ts` | 11 | virtual token issuance and views |
@@ -80,8 +85,10 @@ A block comment in the 3D view and the plan attribution say the same thing.
 | `intent.test.ts` | 10 | natural-language service resolution |
 | `explain.test.ts` | 10 | "why is it long?" grounded in computed factors |
 | `csrf-coverage.test.ts` | 7 | every client write carries a CSRF token |
+| campus-acceptance.test.ts | 4 | 3D acceptance: alternatives, peaks, token destination |
+| campus-perf.test.ts | 5 | scene cost, level of detail, capture size |
 
-Trend: 87 → 126 → 161 → **202** tests over the project's life.
+Trend: 87 → 126 → 161 → **216** tests over the project's life.
 
 ## Five capabilities — acceptance
 
@@ -135,6 +142,42 @@ OpenStreetMap records a height for only a small share of the 336 footprints. The
 rest are drawn at one documented default and the UI says "not recorded — shown at
 a default height". This is a **data** gap in the source, not a modelling choice,
 and it is never presented as surveyed.
+
+## §34 Acceptance criteria — measured
+
+Checked against the running app, not against the plan. ⚠️ means implemented and
+tested, with a stated limitation.
+
+| # | Criterion | Status | Evidence |
+| --- | --- | --- | --- |
+| 1 | Sports facilities are represented | ✅ | 5 real OpenStreetMap pitches drawn in 3D and on the plan; "Sports Ground" and "BasketBall Ground" seeded as campus data with their OSM ids |
+| 2 | Campus landmarks are represented | ✅ | The 6 features OSM names are labelled on both views: B-Block, C-Block, School of Hospitality, Sports Ground, BasketBall Ground, Galgotias University |
+| 3 | Buildings can be selected | ✅ | 336 raycast-pickable footprints; a picked building shows its real area, its height *or the reason it is assumed*, and only the services an admin has confirmed for it |
+| 4 | Services connect to real CampusFlow data | ✅ | 10 beacons built from the live service records, e.g. "Student Records & Registrar (Main) ● Quiet · 6 min" |
+| 5 | Traffic appears from real data | ✅ | `effectiveTrafficState()` over the stored wait and demand level, shown as a glyph plus a word plus a colour |
+| 6 | Peak information appears from real data | ✅ | Forecast engine output, e.g. "Usual peak = 11 AM – 2 PM" and "4 PM – 6 PM"; shows "Not enough history yet" when the engine says so |
+| 7 | Alternatives can be visualized | ✅ | Ranked by time saved, e.g. "Learning Commons Study Hub — 2 min wait · about 1 min less waiting" |
+| 8 | Routes can be displayed | ✅ | Measured on the real network, e.g. "990 m · 12 min walk — Measured along unclassified, service, footway"; 21 of 21 building pairs route |
+| 9 | Library seating connects to the 3D environment | ⚠️ | Real counts on the service panel — Library Circulation 85/88, Learning Commons 35/36. **Per-seat 3D placement is not built**: OSM has no floor or room geometry, so seats cannot be placed inside the building honestly |
+| 10 | Virtual queue destinations can be displayed | ✅ | "Your token CAN-1 · Student Union Central Canteen, Position #2 · Waiting", destination auto-selected, with a measured route from any chosen origin |
+| 11 | Mobile interaction works | ✅ | At 375 px: 19 controls, **none under 44 px**, no horizontal overflow |
+| 12 | Desktop interaction works | ✅ | Orbit, pan, zoom, pinch, keyboard (arrows / `+` `-` / `0` / `Escape`), detail level of detail |
+| 13 | Accessible list fallback works | ✅ | `List` swaps the scene for a real table with a "Position basis" column; `role="img"` label naming the real counts; a hidden live-service list in the DOM; the same table if WebGL cannot start |
+| 14 | Performance remains acceptable | ⚠️ | **Measured: 540 draw calls, 8,238 triangles** for the whole campus, inside the asserted budget. **Frame rate could not be measured** — the verification tab is backgrounded and browsers throttle `requestAnimationFrame`, so any figure would be fiction. Scene cost is published on the canvas and shown in the Layers panel instead |
+| 15 | No operational information is fabricated | ✅ | 216 tests, including: assumed heights are one fixed documented value and never random; unmapped routes fail loudly; a point-mapped feature gets no invented footprint; a building with no linked service shows no figures; the 3D layers contain no `Math.random` |
+
+### Known gaps, stated plainly
+
+- **Frame rate is unmeasured.** Scene cost is a fair proxy and is asserted, but a
+  real frame-rate reading needs a visible tab and a real device.
+- **Per-seat 3D placement is not built.** It would need floor and room geometry
+  that OpenStreetMap does not have. The seat *count* is real and is shown.
+- **Six of the campus's named features are absent from the source data** — Block A,
+  the School of Computing, E-Cell, a library, a canteen and lawn tennis are not in
+  OpenStreetMap, so they are not placed at invented coordinates. An admin confirms
+  the real footprint from the Campus view.
+- **Durable storage is still blocked**, so queue and seat state does not persist
+  between serverless instances. See the blocker above.
 
 ## Recently changed
 

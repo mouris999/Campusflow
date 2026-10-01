@@ -190,7 +190,7 @@ Secrets are read from the environment only. **No secret is in source.**
 
 ## 10. Testing
 
-`node --import tsx --test tests/*.test.ts` — 13 suites, **202 tests**.
+`node --import tsx --test tests/*.test.ts` — 13 suites, **216 tests**.
 
 | Suite | Tests | Covers |
 | --- | --- | --- |
@@ -203,8 +203,10 @@ Secrets are read from the environment only. **No secret is in source.**
 | `token.test.ts` | 11 | virtual token issuance and views |
 | `intent.test.ts` | 10 | natural-language service resolution |
 | `explain.test.ts` | 10 | "why is it long?" grounded in computed factors |
-| `campus3d.test.ts` | 23 | real OSM geometry, measured routes, no invented values |
+| `campus3d.test.ts` | 26 | real OSM geometry, measured routes, no invented values |
 | `campus-links.test.ts` | 14 | admin-only building links, audited |
+| campus-acceptance.test.ts | 4 | 3D acceptance: alternatives, peaks, token destination |
+| campus-perf.test.ts | 5 | scene cost, level of detail, capture size |
 | `csrf-coverage.test.ts` | 7 | **every client write carries the token** |
 | `docs.test.ts` | 11 | **documentation stays present and true** |
 

@@ -21,6 +21,16 @@ import { CAMPUS_GEOMETRY, OSM_ATTRIBUTION, SATELLITE_ATTRIBUTION, geometryProven
 import { formatDistance, formatDuration, ROUTE_SPEED_IS_ASSUMED } from '../lib/campusRoute.js';
 import type { CampusBuilding } from '../lib/campusGeo.js';
 import type { Service } from '../types/index.js';
+import type { PeakForecast } from '../types/traffic.js';
+import { currentCsrfToken } from '../lib/api.js';
+
+/** Scene cost, read from the canvas after the first frames have rendered. */
+interface SceneStats {
+  drawCalls: number;
+  triangles: number;
+  geometries: number;
+  textures: number;
+}
 
 interface Campus3DProps {
   links: CampusLink[];
@@ -71,9 +81,173 @@ export const Campus3D: React.FC<Campus3DProps> = ({ links, onSelectService, onJo
   const [routeError, setRouteError] = useState<string | null>(null);
   const [showLayers, setShowLayers] = useState(false);
   const [showNames, setShowNames] = useState(true);
+  const [sceneStats, setSceneStats] = useState<SceneStats | null>(null);
+
+  /** The signed-in student's active virtual token, if they hold one. */
+  const [tokenOriginId, setTokenOriginId] = useState('');
+  const [myToken, setMyToken] = useState<{
+    entryId: string;
+    ticketNumber: string;
+    serviceId: string;
+    serviceName: string;
+    buildingId: string;
+    position: number | null;
+    etaMin: number | null;
+    etaMax: number | null;
+    leaveBy: string | null;
+    status: string;
+  } | null>(null);
 
   const positioner = useMemo(() => new CampusPositioner(links), [links]);
   const provenance = useMemo(() => geometryProvenance(), []);
+
+  /* ------------------------------------------------------------------ *
+   * Real per-service data, fetched only for services actually on screen.
+   * Each map holds `null` for a service whose data has not arrived, and the UI
+   * omits that row rather than showing a zero.
+   * ------------------------------------------------------------------ */
+  const [peaks, setPeaks] = useState<Map<string, PeakForecast>>(new Map());
+  const [seatCounts, setSeatCounts] = useState<Map<string, { available: number }>>(new Map());
+  const [alternativesCount, setAlternativesCount] = useState<Map<string, number>>(new Map());
+
+  // Which services matter: those in a library or canteen category, where peak,
+  // seats and alternatives are actually meaningful. Fetching for every service
+  // would be noise and extra load.
+  const enrichedIds = useMemo(
+    () =>
+      services
+        .filter(s => ['library', 'canteen', 'admin_office', 'helpdesk', 'laboratory'].includes(s.category))
+        .map(s => s.id),
+    [services]
+  );
+  const enrichedKey = enrichedIds.join('|');
+
+  useEffect(() => {
+    if (enrichedIds.length === 0) return;
+    let cancelled = false;
+
+    const run = async () => {
+      const token = await currentCsrfToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['x-csrf-token'] = token;
+
+      const peakResults = await Promise.all(
+        enrichedIds.map(async id => {
+          try {
+            const res = await fetch(`/api/intelligence/services/${encodeURIComponent(id)}/peak`, {
+              credentials: 'same-origin',
+              headers
+            });
+            if (!res.ok) return null;
+            const body = await res.json();
+            return [id, body.forecast as PeakForecast] as const;
+          } catch {
+            return null;
+          }
+        })
+      );
+      if (cancelled) return;
+      setPeaks(new Map(peakResults.filter(Boolean) as Array<[string, PeakForecast]>));
+
+      const seatResults = await Promise.all(
+        enrichedIds.map(async id => {
+          const service = services.find(s => s.id === id);
+          if (!service) return null;
+          try {
+            // The route is keyed by service id, not building id, and the counts
+            // live under `seating`. An earlier version passed the building id and
+            // read `total`, so the request 404'd and no seat figure ever appeared.
+            const res = await fetch(`/api/services/${encodeURIComponent(id)}/seating`, {
+              credentials: 'same-origin',
+              headers
+            });
+            if (!res.ok) return null;
+            const body = await res.json();
+            const available = body?.seating?.available_seats;
+            if (typeof available !== 'number') return null;
+            return [id, { available }] as const;
+          } catch {
+            return null;
+          }
+        })
+      );
+      if (cancelled) return;
+      setSeatCounts(new Map(seatResults.filter(Boolean) as Array<[string, { available: number }]>));
+
+      const altResults = await Promise.all(
+        enrichedIds.map(async id => {
+          const service = services.find(s => s.id === id);
+          if (!service) return null;
+          try {
+            const res = await fetch(
+              `/api/intelligence/services/${encodeURIComponent(id)}/alternatives?limit=3`,
+              { credentials: 'same-origin', headers }
+            );
+            if (!res.ok) return null;
+            const body = await res.json();
+            return [id, (body.recommended?.length ?? 0) as number] as const;
+          } catch {
+            return null;
+          }
+        })
+      );
+      if (cancelled) return;
+      setAlternativesCount(new Map(altResults.filter(Boolean) as Array<[string, number]>));
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enrichedKey]);
+
+  /**
+   * The student's own live token, so the 3D campus can show where they are
+   * actually headed.
+   *
+   * Read from the real queue record. If they hold no active token the field
+   * stays null and nothing is drawn, rather than a placeholder marker appearing.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/queue/user/me', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const body = await res.json();
+        const active = (body.entries ?? []).find((e: any) =>
+          ['waiting', 'called', 'in_service'].includes(e.status)
+        );
+        if (!active) {
+          if (!cancelled) setMyToken(null);
+          return;
+        }
+        const service = services.find(s => s.id === active.service_id);
+        if (!service) return;
+        if (cancelled) return;
+        setMyToken({
+          entryId: active.id,
+          ticketNumber: active.ticket_number,
+          serviceId: service.id,
+          serviceName: service.name,
+          buildingId: service.building_id,
+          position: typeof active.position === 'number' ? active.position : null,
+          etaMin: typeof active.estimated_wait_mins === 'number' ? active.estimated_wait_mins : null,
+          etaMax:
+            typeof active.estimated_wait_max === 'number' ? active.estimated_wait_max : null,
+          leaveBy: active.leave_by ?? null,
+          status: active.status
+        });
+      } catch {
+        // Offline or unreachable: no token shown, and no invented one.
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [services]);
 
   const buildingById = useMemo(
     () => new Map(buildings.map(b => [b.id, b])),
@@ -81,12 +255,22 @@ export const Campus3D: React.FC<Campus3DProps> = ({ links, onSelectService, onJo
   );
 
   const selectedMarker = markers.find(m => m.serviceId === selectedServiceId) ?? null;
+
+  /** Alternatives for the currently selected service, ranked by time saved. */
+  const alternatives = useMemo(
+    () => (selectedMarker ? bestAlternatives(selectedMarker, markers) : []),
+    [selectedMarker, markers]
+  );
+
   const selectedService = services.find(s => s.id === selectedServiceId) ?? null;
   const selectedBuilding = pickedBuilding;
-  const servicesInPicked = useMemo(
-    () => (pickedBuilding ? services.filter(s => s.building_id === buildingFor(pickedBuilding)) : []),
-    [pickedBuilding, services]
-  );
+  const servicesInPicked = useMemo(() => {
+    if (!pickedBuilding) return [];
+    // A real building shows the services an admin confirmed against it. Until
+    // then it shows none, because guessing would be a fabricated association.
+    const linkedIds = new Set(linkedServicesFor(pickedBuilding.id, links));
+    return services.filter(s => linkedIds.has(s.building_id));
+  }, [pickedBuilding, services, links]);
 
   // --- scene lifecycle
   useEffect(() => {
@@ -113,7 +297,30 @@ export const Campus3D: React.FC<Campus3DProps> = ({ links, onSelectService, onJo
     };
   }, []);
 
+  // Scene cost, sampled from the canvas. A frame counter would be wrong here:
+  // browsers throttle requestAnimationFrame in a background tab, so a headless
+  // check would report 0 fps for a scene that is actually running fine.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const canvas = canvasRef.current;
+      if (!canvas || !canvas.dataset.drawCalls) return;
+      setSceneStats({
+        drawCalls: Number(canvas.dataset.drawCalls) || 0,
+        triangles: Number(canvas.dataset.triangles) || 0,
+        geometries: Number(canvas.dataset.geometries) || 0,
+        textures: Number(canvas.dataset.textures) || 0
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // --- live data into the scene
+  //
+  // Every field here comes from a real source: queue length and wait from the
+  // service record, traffic state from the shared classifier, the peak window
+  // from the forecast engine, and seat availability from the seating endpoint.
+  // A value that has not been fetched stays `null` and the UI omits it, rather
+  // than defaulting to zero.
   useEffect(() => {
     const next = markersFromData({
       services,
@@ -123,11 +330,14 @@ export const Campus3D: React.FC<Campus3DProps> = ({ links, onSelectService, onJo
         const at = positioner.positionFor(building);
         if (!at) return null;
         return { position: at.position, verified: at.verified };
-      }
+      },
+      peakFor: serviceId => peakWindowLabel(peaks.get(serviceId)),
+      seatsFor: serviceId => seatCounts.get(serviceId)?.available,
+      alternativesFor: serviceId => alternativesCount.get(serviceId)
     });
     setMarkers(next);
     sceneRef.current?.setMarkers(next);
-  }, [services, positioner, buildingById]);
+  }, [services, positioner, buildingById, peaks, seatCounts, alternativesCount]);
 
   const focusService = useCallback((id: string) => {
     setSelectedServiceId(id);
@@ -135,6 +345,14 @@ export const Campus3D: React.FC<Campus3DProps> = ({ links, onSelectService, onJo
     sceneRef.current?.selectService(id);
     sceneRef.current?.focusMarker(id);
   }, []);
+
+  // A held token selects its destination, so the campus opens on where the
+  // student is actually going.
+  useEffect(() => {
+    if (!myToken) return;
+    setSelectedServiceId(myToken.serviceId);
+    sceneRef.current?.selectService(myToken.serviceId);
+  }, [myToken]);
 
   const resetView = useCallback(() => {
     sceneRef.current?.resetView();
@@ -254,6 +472,15 @@ export const Campus3D: React.FC<Campus3DProps> = ({ links, onSelectService, onJo
               <div><dt>Real buildings</dt><dd>{CAMPUS_GEOMETRY.buildings.length}</dd></div>
               <div><dt>Real roads and paths</dt><dd>{CAMPUS_GEOMETRY.roads.length}</dd></div>
               <div><dt>Sports pitches</dt><dd>{CAMPUS_GEOMETRY.sports.length}</dd></div>
+              {sceneStats && (
+                <div>
+                  <dt>Scene cost</dt>
+                  <dd>
+                    {sceneStats.drawCalls} draw calls &middot;{' '}
+                    {Math.round(sceneStats.triangles / 1000)}k triangles
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt>Imagery</dt>
                 <dd>
@@ -357,20 +584,30 @@ export const Campus3D: React.FC<Campus3DProps> = ({ links, onSelectService, onJo
                 </div>
               )}
 
-              {/* Alternatives, with a real measured route between them. */}
-              {markers
-                .filter(m => m.serviceId !== selectedMarker.serviceId && m.traffic !== 'closed')
-                .sort(
-                  (a, b) =>
-                    a.waitMins - selectedMarker.waitMins - (b.waitMins - selectedMarker.waitMins)
-                )
-                .slice(0, 2)
-                .map(alt => (
+              {/*
+                Alternatives, ranked by how much time they actually save, with a
+                real measured route between them.
+
+                The previous comparator was
+                  a.waitMins - selected.waitMins - (b.waitMins - selected.waitMins)
+                which reduces to a.waitMins - b.waitMins: it sorted by raw wait
+                rather than by saving, so a slower service could outrank a much
+                faster one. Now ranked by descending saving.
+              */}
+              {alternatives.length > 0 && (
+                <p className="cf3d-alt-head">Better verified options</p>
+              )}
+              {alternatives.map(alt => {
+                const saved = selectedMarker.waitMins - alt.waitMins;
+                return (
                   <div key={alt.serviceId} className="cf3d-alt">
                     <p>
-                      <strong>{alt.serviceName}</strong> — {alt.waitMins} min wait
-                      {alt.waitMins < selectedMarker.waitMins &&
-                        ` (${selectedMarker.waitMins - alt.waitMins} min less)`}
+                      <strong>{alt.serviceName}</strong> - {alt.waitMins} min wait
+                      {saved > 0 ? ' \u00b7 about ' + saved + ' min less waiting' : ' \u00b7 similar wait'}
+                      {alt.alternativesCount != null && alt.alternativesCount > 0
+                        ? ' \u00b7 ' + alt.alternativesCount +
+                          ' more option' + (alt.alternativesCount > 1 ? 's' : '') + ' nearby'
+                        : ''}
                     </p>
                     <button
                       type="button"
@@ -379,7 +616,8 @@ export const Campus3D: React.FC<Campus3DProps> = ({ links, onSelectService, onJo
                       <Route className="w-3.5 h-3.5" aria-hidden="true" /> Show walking route
                     </button>
                   </div>
-                ))}
+                );
+              })}
 
               {routeInfo && (
                 <p className="cf3d-route" role="status">
@@ -456,6 +694,57 @@ export const Campus3D: React.FC<Campus3DProps> = ({ links, onSelectService, onJo
         </ul>
       )}
 
+      {myToken && (
+        <aside className="cf3d-token" aria-live="polite">
+          <div>
+            <p className="cf3d-token-title">
+              Your token {myToken.ticketNumber} &middot; {myToken.serviceName}
+            </p>
+            <p className="cf3d-token-meta">
+              {myToken.position != null && <>Position #{myToken.position} &middot; </>}
+              {myToken.etaMin != null && (
+                <>
+                  {myToken.etaMax != null && myToken.etaMax !== myToken.etaMin
+                    ? myToken.etaMin + '-' + myToken.etaMax + ' min wait'
+                    : myToken.etaMin + ' min wait'}
+                  {' \u00b7 '}
+                </>
+              )}
+              {myToken.status === 'called'
+                ? 'You are being called - head to the counter'
+                : myToken.leaveBy
+                  ? 'Leave by ' + myToken.leaveBy
+                  : 'Waiting'}
+            </p>
+            <p className="cf3d-token-note">
+              Your destination is highlighted on the campus. Choose an origin below for a
+              measured walking route &mdash; CampusFlow does not track your location, so it
+              cannot start the route for you.
+            </p>
+          </div>
+          <label className="cf3d-token-origin">
+            <span className="sr-only">Walking route origin</span>
+            <select
+              value={tokenOriginId}
+              onChange={e => {
+                const id = e.target.value;
+                setTokenOriginId(id);
+                if (id) drawRoute(id, myToken.buildingId);
+              }}
+            >
+              <option value="">Show a route to my token from&hellip;</option>
+              {markers
+                .filter(m => m.serviceId !== myToken.serviceId && m.isOpen)
+                .map(m => (
+                  <option key={m.serviceId} value={m.buildingId}>
+                    {m.serviceName}
+                  </option>
+                ))}
+            </select>
+          </label>
+        </aside>
+      )}
+
       <p className="cf3d-footnote">
         3D campus geometry is real survey data from OpenStreetMap; every queue, wait and
         traffic figure is live CampusFlow data. Nothing on this map is simulated. Buildings
@@ -506,11 +795,60 @@ export const Campus3D: React.FC<Campus3DProps> = ({ links, onSelectService, onJo
   );
 };
 
-/** Finds the CampusFlow building a real OSM building was linked to, if any. */
-function buildingFor(campusBuilding: CampusBuilding): string | null {
-  const links = (window as any).__cfCampusLinks as CampusLink[] | undefined;
-  if (!links) return null;
-  return links.find(l => l.osm_element_id === campusBuilding.id)?.campusflow_building_id ?? null;
+/**
+ * The alternatives worth showing for a service, best first.
+ *
+ * Ranked by descending time saved, which is the only ordering a student cares
+ * about. A candidate must be open, and must either save time or be within a
+ * minute of the same wait, so a slower service is never offered as an
+ * "improvement". Every value shown is a real live figure.
+ */
+function bestAlternatives(
+  selected: ServiceMarker,
+  all: ServiceMarker[],
+  limit = 2
+): ServiceMarker[] {
+  return all
+    .filter(m => m.serviceId !== selected.serviceId)
+    .filter(m => m.isOpen)
+    .map(m => ({ m, saved: selected.waitMins - m.waitMins }))
+    .filter(x => x.saved >= -1)
+    .sort((a, b) => b.saved - a.saved)
+    .slice(0, limit)
+    .map(x => x.m);
+}
+
+/**
+ * A plain-language peak window from a real forecast.
+ *
+ * When the engine says it lacks the history, that reason is repeated rather
+ * than replaced with a plausible-looking time.
+ */
+function peakWindowLabel(forecast: PeakForecast | undefined): string | undefined {
+  if (!forecast) return undefined;
+  if (!forecast.sufficient_data) {
+    return forecast.insufficient_reason ?? 'Not enough history yet';
+  }
+  if (forecast.confidence === 'low') {
+    return forecast.predicted_peak?.label
+      ? forecast.predicted_peak.label + ' (low confidence)'
+      : 'Not enough history yet';
+  }
+  return forecast.predicted_peak?.label ?? undefined;
+}
+
+/**
+ * Services whose CampusFlow building is admin-linked to the picked real building.
+ *
+ * Reads the `links` prop rather than a global, so a real building shows the
+ * services actually confirmed against it. An earlier version looked for
+ * `window.__cfCampusLinks`, which nothing ever set, so every real building
+ * reported "no CampusFlow service linked" even after an admin had confirmed one.
+ */
+function linkedServicesFor(campusBuildingId: string, links: CampusLink[]): string[] {
+  return links
+    .filter(l => l.osm_element_id === campusBuildingId)
+    .map(l => l.campusflow_building_id);
 }
 
 /**

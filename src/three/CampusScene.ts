@@ -90,6 +90,24 @@ export function createCampusScene(
   const navigation: NavigationLayer = createNavigationLayer();
   scene.add(navigation.group);
 
+  /**
+   * Performance statistics, published on the canvas as data attributes.
+   *
+   * A frame-rate reading is useless here: browsers throttle requestAnimationFrame
+   * in a background tab, so an automated check reports 0 fps on a scene that is
+   * running perfectly. Draw calls, triangles and geometries are stable facts
+   * about the scene, and they are what actually determine whether it will hold a
+   * frame rate on a phone.
+   */
+  const publishStats = () => {
+    const info = renderer.info;
+    canvas.dataset.drawCalls = String(info.render.calls);
+    canvas.dataset.triangles = String(info.render.triangles);
+    canvas.dataset.geometries = String(info.memory.geometries);
+    canvas.dataset.textures = String(info.memory.textures);
+    canvas.dataset.programs = String(info.programs?.length ?? 0);
+  };
+
   // Ground status is reported once imagery has settled.
   const groundTimer = window.setInterval(() => {
     if (ground.satelliteLoaded || ground.tilesLoaded > 0) {
@@ -264,6 +282,8 @@ export function createCampusScene(
     frame = requestAnimationFrame(tick);
     camera3d.update();
     surfaces.update(camera3d.height());
+
+    publishStats();
 
     // Report camera movement at a low rate; it drives label visibility.
     const now = performance.now();

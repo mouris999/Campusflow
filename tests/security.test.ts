@@ -167,23 +167,40 @@ test('the sequence recovers from existing tickets if the counter is lost', () =>
   // out. A prefix of its own keeps this independent of the other tests.
   const prefix = `RCV${Date.now()}`;
   const day = new Date().toISOString().slice(0, 10);
-  const service = app.db.getServiceById(libraryId)!;
 
-  // Forge three existing tickets for this prefix/day, as a restore would.
+  // The fixture is written straight into the store, which is what a restored
+  // backup actually looks like. An earlier version built the tickets through
+  // joinQueue, so the test silently depended on the library being open at the
+  // hour it ran and began failing in the evening - the same wall-clock
+  // dependency that made an alternatives test fail at 19:00 (rule R22). This
+  // test is about counter recovery, not about the join rules.
   const forged: string[] = [];
   for (let i = 0; i < 3; i++) {
-    const existing = app.db.joinQueue({
-      service_id: service.id,
-      user_id: `ghost-${prefix}-${i}`,
+    const code = `${prefix}-${10 + i}`;
+    // Written to the underlying store. getQueueEntries() returns a filtered copy,
+    // so pushing onto that would leave the real data untouched and the recovery
+    // scan would correctly find nothing.
+    (app.db as any).data.queue_entries.push({
+      id: `qe-restore-${prefix}-${i}`,
+      ticket_number: code,
+      ticket_date: day,
+      service_id: libraryId,
+      service_name: 'Restored fixture',
       student_name: `Ghost ${i}`,
       student_id_code: `G-${i}`,
-      check_in_type: 'walk_in'
+      user_id: `ghost-${prefix}-${i}`,
+      status: 'completed',
+      position: 0,
+      check_in_type: 'walk_in',
+      joined_at: new Date().toISOString(),
+      queue_join_time: new Date().toISOString(),
+      queue_exit_time: new Date().toISOString(),
+      checked_in_at_counter: true,
+      estimated_wait_at_join: 0,
+      actual_wait_mins: 0,
+      service_duration_mins: 1
     });
-    if (!existing.success) continue;
-    const entry = app.db.getQueueEntryById(existing.entry!.id)!;
-    entry.ticket_number = `${prefix}-${10 + i}`;
-    entry.ticket_date = day;
-    forged.push(entry.ticket_number);
+    forged.push(code);
   }
   assert.equal(forged.length, 3, 'fixture tickets were created');
 

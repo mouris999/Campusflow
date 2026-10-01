@@ -119,14 +119,14 @@ with CSS.
 
 ## Testing
 
-202 tests across 13 suites, all passing.
+216 tests across 15 suites, all passing.
 
 | Suite | Tests | Covers |
 | --- | --- | --- |
 | `seating.test.ts` | 28 | allocation, expiry, windows, concurrency |
 | `auth.test.ts` | 23 | login, hashing, RBAC, IDOR, rate limiting |
 | `api.test.ts` | 22 | endpoint contracts, alternatives, peaks |
-| `campus3d.test.ts` | 23 | real OSM geometry, measured routes, no invented values |
+| `campus3d.test.ts` | 26 | real OSM geometry, measured routes, no invented values |
 | `security.test.ts` | 20 | CSRF, sign-in lockout, revocation, ticket codes, grace, 50-way races |
 | `campus-links.test.ts` | 14 | admin-only building links, audited |
 | `alternatives.test.ts` | 12 | ranking, hard filters, thresholds |
@@ -136,6 +136,8 @@ with CSS.
 | `intent.test.ts` | 10 | natural-language service resolution |
 | `explain.test.ts` | 10 | "why is it long?" grounded in computed factors |
 | `csrf-coverage.test.ts` | 7 | every client write carries a CSRF token |
+| campus-acceptance.test.ts | 4 | 3D acceptance: alternatives, peaks, token destination |
+| campus-perf.test.ts | 5 | scene cost, level of detail, capture size |
 
 Three suites are unusual on purpose:
 

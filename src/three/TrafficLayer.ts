@@ -215,9 +215,10 @@ export function createTrafficLayer(): TrafficLayer {
 export function markersFromData(args: {
   services: Service[];
   positionFor: (buildingId: string) => { position: [number, number]; verified: boolean } | null;
-  peakFor?: (serviceId: string) => string | null;
-  alternativesFor?: (serviceId: string) => number;
-  seatsFor?: (serviceId: string) => number;
+  /** Peak window label, or undefined when the forecast has not loaded. */
+  peakFor?: (serviceId: string) => string | undefined;
+  alternativesFor?: (serviceId: string) => number | undefined;
+  seatsFor?: (serviceId: string) => number | undefined;
 }): ServiceMarker[] {
   const { services, positionFor } = args;
   const out: ServiceMarker[] = [];

@@ -329,3 +329,74 @@ test('the 3D layers never import a random source for operational values', () => 
     );
   }
 });
+
+test('the walkable network is connected enough to route between real places', () => {
+  // Regression guard. Snapping resolves a point to the nearest *vertex*, so a
+  // long straight segment with vertices only at its ends left every point along
+  // it unreachable: one campus building measured an infinite distance from any
+  // path, and only 1 of 21 building pairs could be routed. Edges are now split
+  // so vertices are dense, which is what makes a route possible at all.
+  const graph = new CampusRouteGraph();
+  const conn = graph.connectivity();
+  assert.ok(conn.nodes > 5000, `expected a densified network, got ${conn.nodes} nodes`);
+  assert.ok(
+    conn.largestComponent / conn.nodes > 0.9,
+    `the walkable network is fragmented: only ${conn.largestComponent} of ${conn.nodes} nodes are reachable together`
+  );
+});
+
+test('every projected campus building is near a real walkable path', () => {
+  // A building whose entrance is unreachable from the network cannot be routed
+  // to, and the student is told there is no route rather than shown a straight line.
+  const graph = new CampusRouteGraph();
+  const projections: Array<[string, [number, number]]> = [
+    ['bld-adm', [-309, 211]],
+    ['bld-stu', [28, -70]],
+    ['bld-lib', [253, 281]],
+    ['bld-sci', [-421, -281]],
+    ['bld-eng', [421, -211]],
+    ['bld-nor', [-70, 491]],
+    ['bld-lrn', [168, -449]]
+  ];
+
+  for (const [id, at] of projections) {
+    const approach = graph.approachDistance(at[0], at[1]);
+    assert.ok(
+      Number.isFinite(approach),
+      `${id} is unreachable: no walkable path node anywhere near it`
+    );
+    assert.ok(approach < 200, `${id} sits ${approach.toFixed(0)} m from the nearest path`);
+  }
+});
+
+test('most building pairs produce a real measured route', () => {
+  const graph = new CampusRouteGraph();
+  const points: Array<[string, [number, number]]> = [
+    ['bld-adm', [-309, 211]],
+    ['bld-stu', [28, -70]],
+    ['bld-lib', [253, 281]],
+    ['bld-sci', [-421, -281]],
+    ['bld-eng', [421, -211]],
+    ['bld-nor', [-70, 491]],
+    ['bld-lrn', [168, -449]]
+  ];
+
+  let routed = 0;
+  let pairs = 0;
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      pairs += 1;
+      const r = graph.route(points[i][1], points[j][1]);
+      if (r.ok) {
+        routed += 1;
+        assert.ok(r.distance_m > 0, 'a routed pair must have a positive measured distance');
+        assert.ok(r.approach_m >= 0, 'the off-path approach must be reported, not hidden');
+      }
+    }
+  }
+
+  assert.ok(
+    routed / pairs > 0.9,
+    `only ${routed} of ${pairs} building pairs could be routed; the network is too fragmented`
+  );
+});
