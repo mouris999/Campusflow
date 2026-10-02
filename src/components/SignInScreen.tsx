@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldCheck, GraduationCap, UserCog, ServerCrash, RefreshCw } from 'lucide-react';
+import { GoogleSignInButton } from './GoogleSignInButton';
 
 interface DemoAccount {
   email: string;
@@ -14,6 +15,11 @@ interface SignInScreenProps {
    * therefore the authenticated UI) is owned in exactly one place.
    */
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  /**
+   * Exchanges a verified Firebase ID token for a session. The button handles the
+   * Google popup itself; this only carries the token.
+   */
+  signInWithGoogleToken: (idToken: string) => Promise<{ success: boolean; error?: string }>;
   /** Set when the session was rejected or lost, so the user gets an explanation. */
   sessionError?: string | null;
 }
@@ -36,7 +42,7 @@ const ROLE_META: Record<DemoAccount['role'], { icon: React.ReactNode; label: str
   }
 };
 
-export const SignInScreen: React.FC<SignInScreenProps> = ({ signIn, sessionError }) => {
+export const SignInScreen: React.FC<SignInScreenProps> = ({ signIn, signInWithGoogleToken, sessionError }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
@@ -125,7 +131,7 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ signIn, sessionError
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 className="w-full rounded-xl bg-[#121315] border border-white/10 px-3.5 py-2.5 text-sm text-white outline-none focus:border-[#d9f65b] focus:ring-2 focus:ring-[#d9f65b]/30 transition"
-                placeholder="you@metrouni.edu"
+                placeholder="you@galgotiasuniversity.invalid"
               />
             </div>
 
@@ -165,6 +171,13 @@ export const SignInScreen: React.FC<SignInScreenProps> = ({ signIn, sessionError
                 'Sign in'
               )}
             </button>
+
+            {/* Renders nothing when Firebase is unconfigured, so the password
+                form is the whole sign-in surface on such a deployment. */}
+            <GoogleSignInButton
+              onGoogleToken={signInWithGoogleToken}
+              onError={setError}
+            />
           </form>
         </div>
 

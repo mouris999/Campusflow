@@ -1,6 +1,11 @@
 import { Router, type Request } from 'express';
 import { db, subscribeSSE } from './db.js';
 import { geminiRouter } from './gemini.js';
+import {
+  firebaseAuthConfigured,
+  resolveFirebaseUser,
+  verifyFirebaseIdToken
+} from './firebase-auth.js';
 import { intelligenceRouter } from './intelligence-api.js';
 import { trafficIntelligence } from './intelligence/index.js';
 import {
@@ -92,9 +97,9 @@ apiRouter.get('/auth/demo-accounts', (_req, res) => {
   res.json({
     success: true,
     demo_accounts: [
-      { email: 'alex.rivera@metrouni.edu', password: 'student123', role: 'student', name: 'Alex Rivera' },
-      { email: 'sarah.chen@metrouni.edu', password: 'staff123', role: 'staff', name: 'Sarah Chen' },
-      { email: 'm.vance@metrouni.edu', password: 'admin123', role: 'admin', name: 'Dr. Marcus Vance' }
+      { email: 'alex.rivera@galgotiasuniversity.invalid', password: 'student123', role: 'student', name: 'Alex Rivera' },
+      { email: 'sarah.chen@galgotiasuniversity.invalid', password: 'staff123', role: 'staff', name: 'Sarah Chen' },
+      { email: 'm.vance@galgotiasuniversity.invalid', password: 'admin123', role: 'admin', name: 'Dr. Marcus Vance' }
     ]
   });
 });
@@ -138,6 +143,100 @@ apiRouter.post('/auth/login', (req, res) => {
     actor_role: user.role,
     action: 'LOGIN',
     details: `${user.name} signed in.`
+  });
+
+  res.json({ success: true, user });
+});
+
+/**
+ * Firebase (Google provider) sign-in.
+ *
+ * The browser signs in with Firebase Auth, which mints a *Firebase* ID token.
+ * That token is signed by the same JWKS as a Google token but carries a
+ * different issuer and audience, so it needs its own verifier
+ * (`verifyFirebaseIdToken`) rather than a fallback to the Google one.
+ *
+ * Once verified, it mints an ordinary signed CampusFlow session, so every
+ * existing guard (CSRF, roles, rate limiting, audit) applies unchanged. The
+ * project-id pin in firebase-auth.ts is what stops a token from someone else's
+ * Firebase project being accepted here.
+ *
+ * Exempt from the CSRF token check for the same reason as /auth/login: the caller
+ * has no session yet, so there is no ambient authority to abuse. The Origin check
+ * still runs.
+ */
+apiRouter.post('/auth/firebase', async (req, res) => {
+  const { idToken } = req.body ?? {};
+  const key = clientKey(req);
+
+  if (isRateLimited(key)) {
+    res.status(429).json({
+      success: false,
+      error: 'Too many sign-in attempts. Please wait a few minutes and try again.'
+    });
+    return;
+  }
+
+  // Said plainly rather than silently accepting: an operator who has not set the
+  // project id needs to know why, not to see a generic "could not be verified".
+  if (!firebaseAuthConfigured()) {
+    res.status(503).json({
+      success: false,
+      error: 'Google sign-in is not configured on this deployment. Use your email and password.'
+    });
+    return;
+  }
+
+  if (typeof idToken !== 'string' || !idToken) {
+    res.status(400).json({ success: false, error: 'An ID token is required.' });
+    return;
+  }
+
+  const claims = await verifyFirebaseIdToken(idToken);
+  if (!claims) {
+    db.recordAudit({
+      actor_id: 'anonymous',
+      actor_name: 'firebase',
+      actor_role: 'student',
+      action: 'LOGIN_FAILED',
+      details: 'Firebase sign-in refused: the ID token could not be verified.'
+    });
+    res.status(401).json({ success: false, error: 'Google sign-in could not be verified. Please try again.' });
+    return;
+  }
+
+  const { user, failure } = resolveFirebaseUser(claims.email);
+  if (!user) {
+    db.recordAudit({
+      actor_id: 'anonymous',
+      actor_name: claims.email.slice(0, 120),
+      actor_role: 'student',
+      action: 'LOGIN_FAILED',
+      details: `Firebase sign-in refused: ${claims.email} has no campus account.`
+    });
+    // Naming the reason is honest and useful; it reveals nothing beyond what the
+    // person already knows about their own address.
+    res.status(403).json({
+      success: false,
+      error:
+        failure === 'not_registered'
+          ? 'This Google account is not registered for CampusFlow. Sign in with your campus email and password.'
+          : 'Google sign-in could not be completed.'
+    });
+    return;
+  }
+
+  clearRateLimit(key);
+  const session = createSession(user.id);
+  setSessionCookie(res, session.token);
+  db.recordAudit({
+    actor_id: user.id,
+    actor_name: user.name,
+    actor_role: user.role,
+    action: 'LOGIN',
+    // The provider is recorded because "how did this person authenticate" is a
+    // question an audit has to be able to answer later.
+    details: `${user.name} signed in with Google (Firebase, via ${claims.sign_in_provider ?? 'unknown provider'}).`
   });
 
   res.json({ success: true, user });

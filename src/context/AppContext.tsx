@@ -19,6 +19,12 @@ export interface AppContextType {
   authStatus: 'loading' | 'authenticated' | 'anonymous';
   authError: string | null;
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  /**
+   * Exchanges a verified Firebase ID token for a CampusFlow session. Lives here
+   * rather than in the button so session state stays owned in one place, exactly
+   * as `signIn` does.
+   */
+  signInWithGoogleToken: (idToken: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   services: Service[];
   buildings: Building[];
@@ -128,6 +134,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Sign-in failed. Please try again.' };
+      }
+      setCurrentUser(data.user);
+      setAuthStatus('authenticated');
+      setAuthError(null);
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Cannot reach the CampusFlow server. Check your connection and try again.' };
+    }
+  }, []);
+
+  /**
+   * Exchanges a verified Firebase ID token for a CampusFlow session.
+   *
+   * The browser has already proved identity to Google; the server re-verifies the
+   * token against Firebase's keys, pins it to the configured project, and only
+   * then issues a session. This function just carries the token and adopts the
+   * result, so the caller never handles a session cookie itself.
+   */
+  const signInWithGoogleToken = useCallback(async (idToken: string) => {
+    try {
+      const res = await fetch('/api/auth/firebase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ idToken })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Google sign-in failed. Please try again.' };
       }
       setCurrentUser(data.user);
       setAuthStatus('authenticated');
@@ -519,6 +554,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         authStatus,
         authError,
         signIn,
+        signInWithGoogleToken,
         signOut,
         services,
         buildings,

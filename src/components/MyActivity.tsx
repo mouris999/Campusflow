@@ -154,7 +154,7 @@ export const MyActivity: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-mono font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                      METROPOLITAN UNIVERSITY
+                      GALGOTIAS UNIVERSITY
                     </span>
                     <span className="text-xs text-slate-400 font-mono">
                       MODE: {activeQueue.check_in_type.toUpperCase()}

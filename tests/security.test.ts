@@ -10,8 +10,8 @@ let other: string;
 let otherCsrf = '';
 let libraryId = '';
 
-const STUDENT = { email: 'alex.rivera@metrouni.edu', password: 'student123' };
-const OTHER = { email: 'maya.lin@metrouni.edu', password: 'student123' };
+const STUDENT = { email: 'alex.rivera@galgotiasuniversity.invalid', password: 'student123' };
+const OTHER = { email: 'maya.lin@galgotiasuniversity.invalid', password: 'student123' };
 
 before(async () => {
   app = await createIsolatedServer();
@@ -108,7 +108,7 @@ test('the CSRF token is derived, not random, and stable for a session', () => {
 // ------------------------------------------------- session revocation
 
 test('revoke-all invalidates sessions issued before it', async () => {
-  const a = await signIn(app.base, 'maya.lin@metrouni.edu', 'student123');
+  const a = await signIn(app.base, 'maya.lin@galgotiasuniversity.invalid', 'student123');
   assert.equal((await authedGet(a.cookie, `${app.base}/auth/session`)).status, 200);
 
   const revoked = await authedPost(a.cookie, `${app.base}/auth/revoke-all`, {});
@@ -118,7 +118,7 @@ test('revoke-all invalidates sessions issued before it', async () => {
   assert.equal((await authedGet(a.cookie, `${app.base}/auth/session`)).status, 401);
 
   // Signing in again issues a token carrying the new floor and works.
-  const b = await signIn(app.base, 'maya.lin@metrouni.edu', 'student123');
+  const b = await signIn(app.base, 'maya.lin@galgotiasuniversity.invalid', 'student123');
   assert.equal((await authedGet(b.cookie, `${app.base}/auth/session`)).status, 200);
 });
 
@@ -216,12 +216,12 @@ test('the sequence recovers from existing tickets if the counter is lost', () =>
 
 test('a called student can be given extra time when unreachable', async () => {
   const service = app.db.getServices().find(s => s.category === 'canteen')!;
-  const s = await signIn(app.base, 'alex.rivera@metrouni.edu', 'student123');
+  const s = await signIn(app.base, 'alex.rivera@galgotiasuniversity.invalid', 'student123');
   const joined = await authedPost(s.cookie, `${app.base}/queue/join`, { service_id: service.id });
   if (joined.status !== 201) return; // the account may already hold a ticket
   const entryId = joined.body.entry.id;
 
-  const staff = await signIn(app.base, 'sarah.chen@metrouni.edu', 'staff123');
+  const staff = await signIn(app.base, 'sarah.chen@galgotiasuniversity.invalid', 'staff123');
   const called = await authedPost(staff.cookie, `${app.base}/queue/call-next`, {
     service_id: service.id,
     counter_number: 1
@@ -243,7 +243,7 @@ test('a called student can be given extra time when unreachable', async () => {
 });
 
 test('a student cannot extend their own grace window', async () => {
-  const s = await signIn(app.base, 'alex.rivera@metrouni.edu', 'student123');
+  const s = await signIn(app.base, 'alex.rivera@galgotiasuniversity.invalid', 'student123');
   const mine = await authedGet(s.cookie, `${app.base}/queue/user/me`);
   const called = mine.body.entries.find((e: any) => e.status === 'called');
   if (!called) return;
@@ -253,12 +253,12 @@ test('a student cannot extend their own grace window', async () => {
 
 test('a no-show after an extension is not counted against the student', async () => {
   const service = app.db.getServices().find(s => s.category === 'laboratory')!;
-  const s = await signIn(app.base, 'maya.lin@metrouni.edu', 'student123');
+  const s = await signIn(app.base, 'maya.lin@galgotiasuniversity.invalid', 'student123');
   const joined = await authedPost(s.cookie, `${app.base}/queue/join`, { service_id: service.id });
   if (joined.status !== 201) return;
   const entryId = joined.body.entry.id;
 
-  const staff = await signIn(app.base, 'sarah.chen@metrouni.edu', 'staff123');
+  const staff = await signIn(app.base, 'sarah.chen@galgotiasuniversity.invalid', 'staff123');
   await authedPost(staff.cookie, `${app.base}/queue/${entryId}/start`, {});
   // Back to 'called' is not a public transition, so use the counter flow instead.
   await authedPost(staff.cookie, `${app.base}/queue/${entryId}/complete`, {});
@@ -267,7 +267,7 @@ test('a no-show after an extension is not counted against the student', async ()
   const entry = app.db.getQueueEntryById(entryId)!;
   entry.status = 'called';
   entry.grace_extended = true;
-  const staff2 = await signIn(app.base, 'sarah.chen@metrouni.edu', 'staff123');
+  const staff2 = await signIn(app.base, 'sarah.chen@galgotiasuniversity.invalid', 'staff123');
   const skipped = await authedPost(staff2.cookie, `${app.base}/queue/${entryId}/skip`, { reason: 'no_show' });
   if (skipped.status === 200) {
     const stored = app.db.getQueueEntryById(entryId)!;
@@ -325,7 +325,7 @@ test('50 parallel seat requests for one seat: exactly one winner', async () => {
 
 test('50 parallel joins with one idempotency key still create a single ticket', async () => {
   const service = app.db.getServices().find(s => s.category === 'helpdesk' || s.category === 'admin_office')!;
-  const s = await signIn(app.base, 'alex.rivera@metrouni.edu', 'student123');
+  const s = await signIn(app.base, 'alex.rivera@galgotiasuniversity.invalid', 'student123');
 
   // Start from a clean slate for this service.
   const mine = await authedGet(s.cookie, `${app.base}/queue/user/me`);
@@ -365,7 +365,7 @@ test('sign-in works even when the browser carries a session cookie', async () =>
   const res = await fetch(`${app.base}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: stale },
-    body: JSON.stringify({ email: 'alex.rivera@metrouni.edu', password: 'student123' })
+    body: JSON.stringify({ email: 'alex.rivera@galgotiasuniversity.invalid', password: 'student123' })
   });
   assert.notEqual(res.status, 403, 'a stale session cookie must not block sign-in');
   assert.equal(res.status, 200);
@@ -381,7 +381,7 @@ test('a cross-origin sign-in is still refused', async () => {
       Origin: 'https://evil.example.com',
       Host: new URL(app.base).host
     },
-    body: JSON.stringify({ email: 'alex.rivera@metrouni.edu', password: 'student123' })
+    body: JSON.stringify({ email: 'alex.rivera@galgotiasuniversity.invalid', password: 'student123' })
   });
   assert.equal(res.status, 403);
   assert.match((await res.json()).error, /cross-origin/i);
@@ -391,14 +391,14 @@ test('a same-origin sign-in is accepted', async () => {
   const res = await fetch(`${app.base}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: app.base },
-    body: JSON.stringify({ email: 'alex.rivera@metrouni.edu', password: 'student123' })
+    body: JSON.stringify({ email: 'alex.rivera@galgotiasuniversity.invalid', password: 'student123' })
   });
   assert.equal(res.status, 200);
 });
 
 test('the CSRF token is still required for every other write', async () => {
   // The sign-in exemption must not have weakened anything else.
-  const s = await signIn(app.base, 'alex.rivera@metrouni.edu', 'student123');
+  const s = await signIn(app.base, 'alex.rivera@galgotiasuniversity.invalid', 'student123');
   const res = await fetch(`${app.base}/queue/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: s.cookie },

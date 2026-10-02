@@ -8,9 +8,9 @@ let admin: string;
 let staff: string;
 let student: string;
 
-const ADMIN = { email: 'm.vance@metrouni.edu', password: 'admin123' };
-const STAFF = { email: 'sarah.chen@metrouni.edu', password: 'staff123' };
-const STUDENT = { email: 'alex.rivera@metrouni.edu', password: 'student123' };
+const ADMIN = { email: 'm.vance@galgotiasuniversity.invalid', password: 'admin123' };
+const STAFF = { email: 'sarah.chen@galgotiasuniversity.invalid', password: 'staff123' };
+const STUDENT = { email: 'alex.rivera@galgotiasuniversity.invalid', password: 'student123' };
 
 before(async () => {
   app = await createIsolatedServer();

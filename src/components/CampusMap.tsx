@@ -21,7 +21,9 @@ import { effectiveTrafficState } from '../lib/trafficState.js';
 import { TrafficBadge } from './traffic/TrafficBits.js';
 import { campusRouteGraph, ROUTE_SPEED_IS_ASSUMED } from '../lib/campusRoute.js';
 import { projectLayout } from '../lib/campusLayout.js';
+import { CAMPUS_IDENTITY } from '../lib/campusPlaces.js';
 import { RealCampusPlan } from './RealCampusPlan.js';
+import { CampusPlaces } from './CampusPlaces.js';
 
 interface CampusMapProps {
   onSelectService: (service: Service) => void;
@@ -125,8 +127,13 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           </div>
           <h2 className="text-xl font-display font-black text-slate-900 mt-1 flex items-center gap-2">
             <MapPin className="w-5 h-5 text-indigo-600" />
-            Interactive Campus Concourse &amp; Node Map
+            {CAMPUS_IDENTITY.name}
           </h2>
+          {/* The real campus, not a generic one: this plan is drawn from the
+              survey around this address, so the map says whose campus it is. */}
+          <p className="text-[11px] text-slate-500 mt-1 max-w-xl leading-relaxed">
+            {CAMPUS_IDENTITY.address}
+          </p>
         </div>
 
         {/* Category filter pills */}
@@ -445,6 +452,15 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           </div>
         </div>
       </div>
+
+      {/* The real campus, as Galgotias University describes it: its schools,
+          industry centres, research cells and facilities, each sourced. The
+          queue pins above show CampusFlow's live counters; this directory shows
+          what the institution actually publishes about itself. */}
+      <CampusPlaces
+        buildings={buildings}
+        onSelectBuilding={setSelectedBuildingId}
+      />
     </div>
   );
 };

@@ -16,7 +16,7 @@
 | | |
 | --- | --- |
 | **Build** | ✅ green — typecheck clean, production build clean |
-| **Tests** | ✅ **216 / 216 passing** across 13 suites |
+| **Tests** | ✅ **270 / 270 passing** across 19 suites |
 | **Deployed** | ✅ production, verified live in a browser |
 | **Campus geometry** | ✅ real — 336 building footprints, 178 roads, 5 sports pitches from OpenStreetMap |
 | **Satellite imagery** | ✅ live — Esri World Imagery, 1.19 m/px, attribution displayed |
@@ -30,7 +30,7 @@
 | Check | Command | Result |
 | --- | --- | --- |
 | Types | `node node_modules\typescript\bin\tsc --noEmit` | ✅ 0 errors |
-| Tests | `node --import tsx --test tests/*.test.ts` | ✅ 216/216 |
+| Tests | `node --import tsx --test tests/*.test.ts` | ✅ 264/264 |
 | Build | `node node_modules\vite\bin\vite.js build` | ✅ `dist/` in ~0.6 s |
 | API health | `GET /api/health` | ✅ `status: ok` |
 - **Measured scene cost:** 540 draw calls, 8,238 triangles for the whole campus,
@@ -53,20 +53,26 @@
 | Queue, wait, traffic, peaks | ✅ live | CampusFlow API |
 | Building **heights** | ⚠️ partial | Surveyed where OSM records one; otherwise one documented default, labelled "assumed" |
 | CampusFlow service **positions** | ⚠️ projected | Real only once an administrator confirms a building; otherwise shown as "Projected from the 2D layout" |
-| Block A, School of Computing, E-Cell, Library, Canteen, Lawn tennis | ❌ absent | **Not present in OpenStreetMap.** Not invented. See below |
+| Campus **places** — names | ✅ real | 72 schools, centres, offices and facilities published by Galgotias University, each linked to its source page |
+| Campus **places** — positions | ⚠️ 5 of 72 | Pinned only where OpenStreetMap names the feature; the other 67 are listed with "position not confirmed" and no pin |
+| Block A, E-Cell, Lawn tennis | ❌ absent | **Not present in OpenStreetMap.** Not invented. See below |
 
 ### Why some campus features are missing
 
 OpenStreetMap names only **six** features on this campus: `B-Block`,
 `C-Block`, `School of Hospitality`, `Sports Ground`, `BasketBall Ground` and
-`Galgotias University` itself. There is no OSM entry for Block A, the School of
-Computing, E-Cell, a library, a canteen or a lawn tennis court.
+`Galgotias University` itself. There is no OSM entry for Block A, E-Cell or a
+lawn tennis court, and 294 of the 336 footprints carry nothing but
+`building=house` — there are no amenity tags to mine for a library or a canteen.
 
 Those are real places, so putting them at invented coordinates on a satellite
 image of a real university would be fabricating the location of a real building.
-They are therefore **not** added. To place them, an administrator picks the real
-footprint from the admin tool in the Campus view, which stores a verified link.
-A block comment in the 3D view and the plan attribution say the same thing.
+They are therefore **not** placed. The service map lists them instead, by name and
+source, with `position not confirmed` and no pin; `campus-places.json` has no
+coordinate field at all, so a pin can only come from a surveyed element. To place
+one, an administrator picks the real footprint from the admin tool in the Campus
+view, which stores a verified link. A block comment in the 3D view and the plan
+attribution say the same thing.
 
 ## Test coverage by area
 
@@ -87,8 +93,12 @@ A block comment in the 3D view and the plan attribution say the same thing.
 | `csrf-coverage.test.ts` | 7 | every client write carries a CSRF token |
 | campus-acceptance.test.ts | 4 | 3D acceptance: alternatives, peaks, token destination |
 | campus-perf.test.ts | 5 | scene cost, level of detail, capture size |
+| `campus-places.test.ts` | 15 | real GU directory: no coordinate field, every entry sourced, pins only from surveyed elements |
+| `campus-migration.test.ts` | 6 | an existing install is moved onto the real campus without losing data |
+| `firebase-auth.test.ts` | 23 | Firebase ID token: project pin, algorithm, expiry, role mapping |
+| `firebase-auth-endpoint.test.ts` | 10 | Firebase sign-in over HTTP: session issued, foreign project refused |
 
-Trend: 87 → 126 → 161 → **216** tests over the project's life.
+Trend: 87 -> 126 -> 161 -> 216 -> 240 -> **264** tests over the project's life.
 
 ## Five capabilities — acceptance
 
@@ -183,6 +193,8 @@ tested, with a stated limitation.
 
 | Date | Change | Evidence |
 | --- | --- | --- |
+| 2026-10-02 | Real Galgotias University directory added to the service map | `campus-places.json`, `CampusPlaces.tsx`, `campusPlaces.ts`; 72 sourced places, 15 tests |
+| 2026-10-02 | **Bug:** app still shipped the fictional "Metropolitan University" campus | `FIX.md` #17 |
 | 2026-10-01 | 3D campus built on real OpenStreetMap geometry + Esri satellite | `src/three/*`; verified live: 336 footprints, 10 live beacons |
 | 2026-10-01 | Service map redrawn from real survey data, replacing decorative fiction | `RealCampusPlan.tsx`; 540 real paths, real Galgotias labels |
 | 2026-10-01 | Campus renamed to Galgotias University, timezone Asia/Kolkata | seed + `Campus` type |

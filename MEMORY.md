@@ -63,6 +63,19 @@ Set with `$env:PORT=3010`.
   An admin confirms them from the Campus view.
 - `School of Hospitality` is a **node**, not a polygon. Any renderer must handle
   features that have `x`/`y` and no `footprint`.
+- `src/data/campus-places.json` holds the **real university** — 72 schools,
+  centres, offices and facilities, each with the page it came from. It
+  deliberately has **no `x`/`y`/`lat`/`lon` field**, so `placeAnchor()` can only
+  resolve a position from a surveyed OSM element. Only the 5 named campus
+  features are pinnable; the rest are listed with "position not confirmed".
+- Live Overpass re-checked 2026-10-02: OSM still names just those campus
+  features, and 294 of 336 footprints are tagged only `building=house`, 41
+  `building=yes`, 1 `building=college`. There are no amenity tags to mine, so no
+  further positions are available from the survey.
+- Demo logins use the `.invalid` TLD (RFC 2606) on purpose — a demo address must
+  not be a deliverable mailbox. `migrateSchema()` **refreshes** the seeded demo
+  fields on known user ids, not just inserts missing users; insert-only would
+  strand every existing install on an address rename.
 
 ### Git
 The project **is** a git repository, tracking
@@ -127,6 +140,23 @@ npx vercel --prod --yes
 - **PowerShell `&&` is unavailable**; use `;` and check `$LASTEXITCODE`.
 - **Path 3010 may already have a stale server.** Kill by matching the command
   line, not by port, to avoid killing unrelated Node processes.
+- **The Windows console cannot render U+2014, U+2705 or U+2192** and prints `?`
+  in their place. Never diagnose an encoding problem from console output — a
+  "mojibake bug" reported this way did not exist (`FIX.md` #16). Enumerate real
+  codepoints instead:
+  `[regex]::Matches([System.IO.File]::ReadAllText($p), "[^\x00-\x7F]") | % { "U+{0:X4}" -f [int][char]$_.Value }`
+  Only **U+FFFD** means real corruption.
+- **A stale `python3.13.exe` http.server can squat a port** that a new
+  `Start-Process python` then silently fails to bind, so you end up testing the
+  old directory. Find the holder by port, not by process name:
+  `Get-NetTCPConnection -LocalPort 8123 -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`
+  Filtering on `Name='python.exe'` misses `python3.13.exe`.
+- **Firebase Auth needs two different variables.** `VITE_FIREBASE_PROJECT_ID` is
+  for the browser; `CAMPUSFLOW_FIREBASE_PROJECT_ID` is the server's trust pin
+  and must match it. Nothing in the server calls `dotenv.config()`, so a `.env`
+  file never reaches it — the server value must be a real process env var
+  (Vercel setting, or exported in the shell). With only the `VITE_` one set, the
+  button renders and the endpoint answers **503**.
 
 ## 4. Decisions and their reasoning
 
@@ -143,6 +173,11 @@ npx vercel --prod --yes
 | Added a mobile tab strip rather than restructuring navigation | Discoverability without changing the information architecture |
 | Suggestion chips derived from the live catalogue | Hardcoded chips rot; the catalogue is the source of truth |
 | No `is_demo` flag on seeded data | The seeded campus **is** the deployment's real data; a demo flag would make every live page read as a demo. Instead, forecasts are labelled and insufficient history is stated |
+| Firebase Auth rather than Google Identity Services | The user chose it. GSI was already implemented server-side, but Firebase was the stated preference. **Consequence:** Firebase mints its own JWT (`securetoken.google.com/<projectId>`), so the GSI verifier could not be reused — `server/firebase-auth.ts` is a separate verifier, and GSI was later removed rather than left as a second, unmaintained path |
+| Shared JWKS cache in `server/jwks.ts` | Google ID tokens and Firebase ID tokens are signed by the same key set behind one endpoint. Two caches meant two fetches and two rotation windows |
+| Firebase SDK behind a dynamic `import()` | It is a large dependency for an optional sign-in method. Verified split: main bundle 472 kB, Firebase isolated in its own ~68 kB chunk that `index.html` does not preload, so nobody who skips the button downloads it |
+| Button renders nothing when Firebase is unconfigured | A visible button that cannot work is worse than no button. `firebaseAuthConfigured()` gates the render |
+| Unregistered Google email refused, not provisioned | Auto-provisioning would make any Google account a CampusFlow account, which is a registration and access-control decision nobody made (R15a) |
 
 ## 5. Things that look wrong but are correct
 
@@ -179,7 +214,7 @@ npx vercel --prod --yes
 ```
 
 The demo accounts are listed by `GET /api/auth/demo-accounts`
-(`alex.rivera@metrouni.edu` / `student123`, `sarah.chen@metrouni.edu` / `staff123`).
+(`alex.rivera@galgotiasuniversity.invalid` / `student123`, `sarah.chen@galgotiasuniversity.invalid` / `staff123`).
 
 ## 8. Living reminders
 

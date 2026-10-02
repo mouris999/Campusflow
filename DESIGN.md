@@ -82,12 +82,16 @@ Simulation output always carries **MODEL ESTIMATE — not campus data**.
 
 **Shell & navigation**
 `Navbar` (sticky, blurs, wraps so the mobile strip drops below) · `SignInScreen`
-· `StorageNotice` (ephemeral-storage banner) · `OfflineBanner` · `FreshnessBadge`
+· `GoogleSignInButton` (secondary "Continue with Google"; renders nothing when
+Firebase is unconfigured, so the password form stays the whole sign-in surface) ·
+`StorageNotice` (ephemeral-storage banner) · `OfflineBanner` · `FreshnessBadge`
 
 **Campus**
 `CampusView` (hosts both campus views; code-splits the heavy ones) ·
 `Campus3D` (3D scene, info panel, accessible list) · `RealCampusPlan` (2D plan
 from real survey geometry) · `CampusMap` (existing 2D service map, preserved) ·
+`CampusPlaces` (real Galgotias University directory: schools, centres and
+facilities, each sourced, pinned only where the survey names it) ·
 `CampusLinkAdmin` (admin-only building confirmation) · `SeatMap`
 
 **Student**
@@ -178,6 +182,35 @@ A building with no linked service shows **no** wait, queue or count. Showing
 so the service pins and route line drop in unchanged. Road classes are drawn at
 different widths, sports pitches are dashed so they are not read as buildings, and
 the OSM and Esri attribution is always visible.
+
+### The real campus directory
+
+Geometry says where the buildings are. It does not say what a university *is*:
+OpenStreetMap names five features on this campus out of 336 footprints and tags
+the rest with nothing but `building=house`, so a plan drawn from the survey alone
+cannot name the School of Law, the Central Library, or the Cisco Centre of
+Excellence. `CampusPlaces` supplies that half, from the university's own published
+pages, in `src/data/campus-places.json`.
+
+The schema has a deliberate hole in it: a place may carry an `osm_element_id` and
+nothing that describes a position. There is no `x`, `y`, `lat` or `lon` field,
+so `placeAnchor()` can only resolve a pin by looking that identifier up in the
+committed survey, and returns `null` when the survey has no such element. An
+invented coordinate is not merely discouraged, it is unrepresentable.
+
+That yields the split the UI renders:
+
+| State | Count | Shown as |
+| --- | --- | --- |
+| Surveyed | 5 | `PINNED`, and `Show on plan` focuses the matching pin |
+| Named, unpositioned | 67 | `NO PIN`, a link to the page it came from, and `position not confirmed` |
+
+The 72 entries are 27 schools, 8 industry-integrated academic centres, 4 research
+units, and the rest offices, services and amenities — the university's own
+published list, not a selection made to flatter the map. The counts are computed,
+never written into the copy, so the header cannot drift away from the data. An
+administrator can attach a real footprint to any listed place from the Campus
+view, at which point it becomes pinnable.
 
 ### Controls
 

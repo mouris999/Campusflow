@@ -72,6 +72,21 @@ token. Demo sign-in is switchable off via `CAMPUSFLOW_DEMO_AUTH=false`.
 **R15. Secrets only from the environment.** Never in source, never in a client
 bundle, never in a log line.
 
+**R15a. An external identity proves identity, never authority.** A Google or
+Firebase token may only authenticate an account that already exists in
+`server/db.ts`, and the role always comes from that database. No code path may
+read a role, an email domain or an admin flag out of a provider's claims. An
+unknown email is refused, never auto-provisioned, because auto-provisioning
+turns "anyone with a Google account" into a registration flow nobody approved.
+
+**R15b. A shared-key provider still needs a project pin.** Every Firebase project
+signs with keys from one JWKS endpoint, so a valid signature proves only that
+*some* Firebase project signed the token. `server/firebase-auth.ts` therefore
+compares both `aud` and `iss` against `CAMPUSFLOW_FIREBASE_PROJECT_ID`, and
+refuses every token when it is unset. Removing that comparison is an
+authentication bypass, not a simplification: it would let an attacker sign in as
+any address using their own free Firebase project.
+
 **R16. Timings compared safely.** `crypto.timingSafeEqual` for secrets, tokens
 and password hashes.
 

@@ -51,7 +51,7 @@ function writeCallSites(): Array<{ file: string; snippet: string }> {
  * caller has no session yet, so there is no ambient authority to abuse. The
  * server enforces exactly this rule: no session cookie means no CSRF check.
  */
-const UNAUTHENTICATED_WRITES = ['/api/auth/login'];
+const UNAUTHENTICATED_WRITES = ['/api/auth/login', '/api/auth/firebase'];
 
 test('every client write goes through a CSRF-attaching path', () => {
   const offenders = writeCallSites().filter(hit => {

@@ -124,7 +124,7 @@ export const ServiceDiscovery: React.FC<ServiceDiscoveryProps> = ({
               <div className="flex items-center gap-2 font-mono text-xs text-indigo-400 uppercase tracking-widest font-bold">
                 <span>CONCOURSE STATUS GRID</span>
                 <span>•</span>
-                <span className="text-slate-400">METROPOLITAN CENTRAL</span>
+                <span className="text-slate-400">GALGOTIAS UNIVERSITY</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black font-display tracking-tight text-white mt-0.5">
                 Live Campus Service Status &amp; Wait Matrix

@@ -111,6 +111,12 @@ if (!fs.existsSync(DATA_DIR)) {
 /**
  * Demo identities shipped with the platform. Passwords live in server/auth.ts
  * and are never stored in the database file.
+ *
+ * The addresses use the `.invalid` top-level domain reserved by RFC 2606, which
+ * by definition never resolves. A demo account must not be a deliverable
+ * mailbox: naming a real student's or staff member's address here would send
+ * password resets and notifications to a stranger. The domain still reads as
+ * Galgotias University so the sign-in screen matches the campus the app draws.
  */
 const DEMO_USER_PROFILES: UserProfile[] = [
   {
@@ -118,21 +124,21 @@ const DEMO_USER_PROFILES: UserProfile[] = [
     name: 'Alex Rivera',
     role: 'student',
     id_code: 'STU-8821',
-    email: 'alex.rivera@metrouni.edu'
+    email: 'alex.rivera@galgotiasuniversity.invalid'
   },
   {
     id: 'usr-student-2',
     name: 'Maya Lin',
     role: 'student',
     id_code: 'STU-9147',
-    email: 'maya.lin@metrouni.edu'
+    email: 'maya.lin@galgotiasuniversity.invalid'
   },
   {
     id: 'usr-staff-1',
     name: 'Sarah Chen',
     role: 'staff',
     id_code: 'STF-302',
-    email: 'sarah.chen@metrouni.edu',
+    email: 'sarah.chen@galgotiasuniversity.invalid',
     assigned_service_id: 'srv-reg-main',
     assigned_counter_number: 1
   },
@@ -141,7 +147,7 @@ const DEMO_USER_PROFILES: UserProfile[] = [
     name: 'David Okafor',
     role: 'staff',
     id_code: 'STF-417',
-    email: 'david.okafor@metrouni.edu',
+    email: 'david.okafor@galgotiasuniversity.invalid',
     assigned_service_id: 'srv-canteen-central',
     assigned_counter_number: 1
   },
@@ -150,7 +156,7 @@ const DEMO_USER_PROFILES: UserProfile[] = [
     name: 'Dr. Marcus Vance',
     role: 'admin',
     id_code: 'ADM-001',
-    email: 'm.vance@metrouni.edu'
+    email: 'm.vance@galgotiasuniversity.invalid'
   }
 ];
 
@@ -216,19 +222,38 @@ function generateEmptyShape(): DatabaseSchema {
   };
 }
 
-function generateInitialSeed(): DatabaseSchema {
-  const campus: Campus = {
-    id: 'camp-main',
-    name: 'Galgotias University, Greater Noida',
-    code: 'GU-CENTRAL',
-    timezone: 'Asia/Kolkata',
-    // Real centre, confirmed by the campus owner. The 3D campus and the service
-    // map plan are both drawn from survey data around this point.
-    centre_lat: 28.365858,
-    centre_lon: 77.542225
-  };
+/**
+ * The real campus record.
+ *
+ * Held at module scope rather than inside generateInitialSeed so the schema
+ * migration can reconcile an existing database against it. Installs created
+ * before the campus became Galgotias University still carry the old fictional
+ * name and timezone on disk, and nothing else in the app would ever correct it.
+ */
+const SEED_CAMPUS: Campus = {
+  id: 'camp-main',
+  name: 'Galgotias University, Greater Noida',
+  code: 'GU-CENTRAL',
+  timezone: 'Asia/Kolkata',
+  // Real centre, confirmed by the campus owner. The 3D campus and the service
+  // map plan are both drawn from survey data around this point.
+  centre_lat: 28.365858,
+  centre_lon: 77.542225
+};
 
-  const buildings: Building[] = [
+/** Deep copy, so a caller mutating seed data cannot corrupt the constant. */
+function cloneBuildings(buildings: Building[]): Building[] {
+  return buildings.map(b => ({ ...b, map_coords: { ...b.map_coords } }));
+}
+
+/**
+ * Seeded campus locations.
+ *
+ * At module scope for the same reason as SEED_CAMPUS: the schema migration
+ * inserts any of these the stored copy predates, so an install created before the
+ * campus became real ends up with the surveyed Galgotias buildings on its map.
+ */
+const SEED_BUILDINGS: Building[] = [
     /* ------------------------------------------------------------------
      * Real Galgotias University structures.
      *
@@ -370,7 +395,11 @@ function generateInitialSeed(): DatabaseSchema {
       description: 'Group study rooms, silent carrels, shared tables and print point.',
       map_coords: { x: 62, y: 82 }
     }
-  ];
+];
+
+function generateInitialSeed(): DatabaseSchema {
+  const campus: Campus = SEED_CAMPUS;
+  const campusBuildings: Building[] = cloneBuildings(SEED_BUILDINGS);
 
   const services: Service[] = [
     {
@@ -1117,7 +1146,7 @@ function generateInitialSeed(): DatabaseSchema {
 
   return {
     campuses: [campus],
-    buildings,
+    buildings: campusBuildings,
     services,
     counters,
     queue_entries,
@@ -1252,6 +1281,40 @@ class Database {
       }
     }
 
+    // Campus identity: an install created before this campus became Galgotias
+    // University still has the old fictional name, code, timezone and no centre
+    // on disk. The map draws real Galgotias geometry, so leaving those fields
+    // stale would have the header contradict the plan underneath it. Identity is
+    // reconciled, not merely inserted.
+    const mainCampus = data.campuses.find(c => c.id === SEED_CAMPUS.id);
+    if (!mainCampus) {
+      data.campuses.unshift({ ...SEED_CAMPUS });
+      changed = true;
+    } else {
+      for (const field of ['name', 'code', 'timezone', 'centre_lat', 'centre_lon'] as const) {
+        if (mainCampus[field] !== SEED_CAMPUS[field]) {
+          (mainCampus[field] as typeof SEED_CAMPUS[typeof field]) = SEED_CAMPUS[field];
+          changed = true;
+        }
+      }
+    }
+
+    // Seeded buildings the stored copy predates, inserted without disturbing any
+    // that are already present. Existing rows are left alone, so an
+    // administrator's confirmed building-position link survives an upgrade.
+    const campusId = mainCampus?.id ?? SEED_CAMPUS.id;
+    const knownBuildings = new Set(data.buildings.map(b => b.id));
+    for (const building of SEED_BUILDINGS) {
+      if (knownBuildings.has(building.id)) continue;
+      data.buildings.push({
+        ...building,
+        campus_id: campusId,
+        map_coords: { ...building.map_coords }
+      });
+      knownBuildings.add(building.id);
+      changed = true;
+    }
+
     // Learning Commons branch: a real second study-space location so library
     // alternatives are backed by an actual service record.
     if (!data.buildings.some(b => b.id === 'bld-lrn')) {
@@ -1340,15 +1403,34 @@ class Database {
       changed = true;
     }
 
-    // Demo accounts used by the sign-in screen must always exist.
+    // Demo accounts used by the sign-in screen must always exist, and their
+    // addresses must track DEMO_USER_PROFILES.
+    //
+    // Insert-only is not enough here. Renaming a demo address would otherwise
+    // strand every existing install: the user rows are already present, so they
+    // kept the old address and sign-in failed for everyone. Refreshing the
+    // seeded fields on those known ids keeps an upgrade working. Only fields the
+    // seed owns are touched, so a locally edited name or role survives.
     const knownUserIds = ['usr-student-1', 'usr-student-2', 'usr-staff-1', 'usr-staff-2', 'usr-admin-1'];
     for (const userId of knownUserIds) {
-      if (!data.users.some(u => u.id === userId)) {
-        const demo = DEMO_USER_PROFILES.find(u => u.id === userId);
-        if (demo) {
-          data.users.push({ ...demo });
-          changed = true;
-        }
+      const demo = DEMO_USER_PROFILES.find(u => u.id === userId);
+      if (!demo) continue;
+
+      const existing = data.users.find(u => u.id === userId);
+      if (!existing) {
+        data.users.push({ ...demo });
+        changed = true;
+        continue;
+      }
+
+      if (existing.email !== demo.email || existing.name !== demo.name || existing.role !== demo.role) {
+        existing.email = demo.email;
+        existing.name = demo.name;
+        existing.role = demo.role;
+        existing.id_code = demo.id_code;
+        existing.assigned_service_id = demo.assigned_service_id;
+        existing.assigned_counter_number = demo.assigned_counter_number;
+        changed = true;
       }
     }
 
@@ -2451,7 +2533,9 @@ class Database {
 
   /** Campus-local timezone, used to resolve wall-clock booking times. */
   public campusTimezone(): string {
-    return this.data.campuses[0]?.timezone || 'America/New_York';
+    // Falls back to the seeded campus timezone, not to some other country's. An
+    // unstated fallback here would silently shift every booking by half a day.
+    return this.data.campuses[0]?.timezone || SEED_CAMPUS.timezone;
   }
 
   public getSeatZones(serviceId?: string): SeatZone[] {

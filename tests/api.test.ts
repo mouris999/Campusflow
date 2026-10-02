@@ -24,8 +24,8 @@ before(async () => {
   canteenId = services.find(s => s.name.includes('Central Canteen'))!.id;
   cafeId = services.find(s => s.name.includes('Cafe'))!.id;
 
-  staffCookie = (await signIn(app.base, 'sarah.chen@metrouni.edu', 'staff123')).cookie;
-  adminCookie = (await signIn(app.base, 'm.vance@metrouni.edu', 'admin123')).cookie;
+  staffCookie = (await signIn(app.base, 'sarah.chen@galgotiasuniversity.invalid', 'staff123')).cookie;
+  adminCookie = (await signIn(app.base, 'm.vance@galgotiasuniversity.invalid', 'admin123')).cookie;
 });
 
 after(async () => {

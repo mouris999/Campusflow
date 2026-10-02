@@ -77,6 +77,31 @@ stylised diagram: it is the actual place, with CampusFlow's live data on top.
 - **Provenance everywhere** — surveyed, projected and assumed are visually and
   textually distinct. A building with no linked service shows no figures at all
 
+### 4.4 Added 2026-10-02 — the real college, and the last of the fiction
+
+Geometry tells you where the buildings are. It cannot tell you what the university
+is: OpenStreetMap names five features on this campus out of 336 footprints, and
+tags the rest with nothing but `building=house`. A plan built only from the survey
+therefore could not name the School of Law, the Central Library, or the Cisco
+Centre of Excellence — three places any student would look for.
+
+- **A real campus directory** — 72 places published by Galgotias University itself:
+  27 schools, 8 industry-integrated academic centres, 4 research units, the
+  registrar, examination cell, councils, NCC and NSS, the Central Library,
+  Galgotias Dining, the health centre, the sports grounds, the hostel, the shops,
+  the bank and the bus services. Every entry carries a link to the page it came
+  from
+- **Five pins, sixty-seven honest listings** — a place is pinned only when the
+  survey names it. The rest read `position not confirmed` and get no pin. The data
+  file has no coordinate field at all, so an invented position is unrepresentable
+  rather than merely discouraged
+- **The fiction removed** — the AI assistant, all three chatbot personas, the
+  ticket header, the discovery grid, the sign-in placeholder and the video poster
+  no longer name "Metropolitan University"; `campusTimezone()` no longer falls back
+  to `America/New_York`, which was shifting every booking time by half a day; demo
+  logins moved to the RFC 2606 `.invalid` TLD so a demo address can never be a
+  real, deliverable mailbox
+
 ## 5. Non-negotiable product rules
 
 These are product requirements, not implementation details. See `RULES.md`.

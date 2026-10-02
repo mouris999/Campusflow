@@ -152,86 +152,110 @@ export const RealCampusPlan: React.FC<{ children?: React.ReactNode }> = ({ child
     >
       <rect width="100" height="100" fill="#0b1016" />
 
+      {/*
+        Every layer below is an array of children inside one <svg>. Left as bare
+        sibling arrays, React auto-generates a key per array and two of them can
+        collide - which it reports as "two children with the same key" and which
+        can duplicate or drop a layer. Wrapping each layer in a keyed <g> gives
+        React an explicit identity for all of them.
+      */}
+
       {/* Green space, water, woodland, parking - real land-use polygons. */}
-      {green.map(a => (
-        <path key={a.id} d={ringPath(a.footprint)} fill="#16301f" stroke="#2c5c3a" strokeWidth={0.12} />
-      ))}
-      {wood.map(a => (
-        <path key={a.id} d={ringPath(a.footprint)} fill="#16301f" stroke="#2c5c3a" strokeWidth={0.12} />
-      ))}
-      {water.map(a => (
-        <path key={a.id} d={ringPath(a.footprint)} fill="#12324e" stroke="#2b5f8a" strokeWidth={0.12} />
-      ))}
-      {parking.map(a => (
-        <path key={a.id} d={ringPath(a.footprint)} fill="#1c2027" stroke="#3a414b" strokeWidth={0.1} />
-      ))}
+      <g key="layer-green">
+        {green.map(a => (
+          <path key={a.id} d={ringPath(a.footprint)} fill="#16301f" stroke="#2c5c3a" strokeWidth={0.12} />
+        ))}
+      </g>
+      <g key="layer-wood">
+        {wood.map(a => (
+          <path key={a.id} d={ringPath(a.footprint)} fill="#16301f" stroke="#2c5c3a" strokeWidth={0.12} />
+        ))}
+      </g>
+      <g key="layer-water">
+        {water.map(a => (
+          <path key={a.id} d={ringPath(a.footprint)} fill="#12324e" stroke="#2b5f8a" strokeWidth={0.12} />
+        ))}
+      </g>
+      <g key="layer-parking">
+        {parking.map(a => (
+          <path key={a.id} d={ringPath(a.footprint)} fill="#1c2027" stroke="#3a414b" strokeWidth={0.1} />
+        ))}
+      </g>
 
       {/* Sports pitches, marked as such so they are not read as buildings. */}
-      {sports.map(a => (
-        <path
-          key={a.id}
-          d={ringPath(a.footprint)}
-          fill="#1d4230"
-          stroke="#4ec27f"
-          strokeWidth={0.22}
-          strokeDasharray="1 0.6"
-        />
-      ))}
+      <g key="layer-sports">
+        {sports.map(a => (
+          <path
+            key={a.id}
+            d={ringPath(a.footprint)}
+            fill="#1d4230"
+            stroke="#4ec27f"
+            strokeWidth={0.22}
+            strokeDasharray="1 0.6"
+          />
+        ))}
+      </g>
 
       {/* Roads, widest first so junctions read correctly. */}
-      {roadBands.map(([width, paths]) => (
-        <g key={width}>
-          {paths.map((d, i) => (
-            <path
-              key={i}
-              d={d}
-              fill="none"
-              stroke={width > 0.6 ? '#4b5563' : width > 0.3 ? '#3f4854' : '#5b6472'}
-              strokeWidth={width}
-              strokeLinecap="round"
-            />
-          ))}
-        </g>
-      ))}
+      <g key="layer-roads">
+        {roadBands.map(([width, paths]) => (
+          <g key={width}>
+            {paths.map((d, i) => (
+              <path
+                key={i}
+                d={d}
+                fill="none"
+                stroke={width > 0.6 ? '#4b5563' : width > 0.3 ? '#3f4854' : '#5b6472'}
+                strokeWidth={width}
+                strokeLinecap="round"
+              />
+            ))}
+          </g>
+        ))}
+      </g>
 
       {/* Real building footprints. Unnamed ones stay plain: no invented labels. */}
-      {buildings.map(b => (
-        <path
-          key={b.id}
-          d={ringPath(b.footprint)}
-          fill="#39414d"
-          stroke="#5b6572"
-          strokeWidth={0.1}
-        />
-      ))}
+      <g key="layer-buildings">
+        {buildings.map(b => (
+          <path
+            key={b.id}
+            d={ringPath(b.footprint)}
+            fill="#39414d"
+            stroke="#5b6572"
+            strokeWidth={0.1}
+          />
+        ))}
+      </g>
 
       {/* Labels for the features the source data actually names. */}
-      {named.map(n => {
-        const [x, y] = project(n.at[0], n.at[1]);
-        return (
-          <g key={`label-${n.id}`}>
-            <text
-              x={x}
-              y={y}
-              fill="#e6e9ef"
-              fontSize={n.isPoint ? 1.5 : 1.9}
-              fontWeight="700"
-              textAnchor="middle"
-              paintOrder="stroke"
-              stroke="#0b1016"
-              strokeWidth={0.45}
-              style={{ letterSpacing: '0.02em' }}
-            >
-              {n.name}
-            </text>
-            {n.isPoint && (
-              // A point-mapped feature gets a dot rather than massing, so it is
-              // not mistaken for a surveyed outline.
-              <circle cx={x} cy={y} r={0.7} fill="#e6e9ef" opacity={0.75} />
-            )}
-          </g>
-        );
-      })}
+      <g key="layer-labels">
+        {named.map(n => {
+          const [x, y] = project(n.at[0], n.at[1]);
+          return (
+            <g key={`label-${n.id}`}>
+              <text
+                x={x}
+                y={y}
+                fill="#e6e9ef"
+                fontSize={n.isPoint ? 1.5 : 1.9}
+                fontWeight="700"
+                textAnchor="middle"
+                paintOrder="stroke"
+                stroke="#0b1016"
+                strokeWidth={0.45}
+                style={{ letterSpacing: '0.02em' }}
+              >
+                {n.name}
+              </text>
+              {n.isPoint && (
+                // A point-mapped feature gets a dot rather than massing, so it is
+                // not mistaken for a surveyed outline.
+                <circle cx={x} cy={y} r={0.7} fill="#e6e9ef" opacity={0.75} />
+              )}
+            </g>
+          );
+        })}
+      </g>
 
       {children}
 

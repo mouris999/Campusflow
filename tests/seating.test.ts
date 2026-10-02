@@ -24,8 +24,8 @@ let other: string;
 let libraryId = '';
 let commonsId = '';
 
-const STUDENT = { email: 'alex.rivera@metrouni.edu', password: 'student123' };
-const OTHER = { email: 'maya.lin@metrouni.edu', password: 'student123' };
+const STUDENT = { email: 'alex.rivera@galgotiasuniversity.invalid', password: 'student123' };
+const OTHER = { email: 'maya.lin@galgotiasuniversity.invalid', password: 'student123' };
 
 const ZONES: SeatZone[] = [
   { id: 'z1', service_id: 'lib', name: 'Silent Study', floor: 'Mezzanine', kind: 'quiet' },

@@ -1,14 +1,14 @@
 # CampusFlow — Fix Log
 
-**Last updated:** 2026-09-30
+**Last updated:** 2026-10-02
 
 > Every real bug found, with root cause, fix, and the evidence that it is fixed.
 > **Rule R19: a fix ships with a regression test.** A bug fixed without one is not
 > fixed, it is hidden.
 >
-> Count: **14 bugs** — 3 shipped to production, 3 self-inflicted during this
-> work, 1 test defect, 1 found while preparing a public push, 6 found by testing
-> before release.
+> Count: **17 bugs** — 5 critical, 8 high, 4 low. Five were self-inflicted during this
+> work (#7, #9, #11, #14, #16), and two were defects in the test suite itself
+> (#8, #15).
 
 ---
 
@@ -30,6 +30,9 @@
 | 12 | 🟠 High | Map / data honesty | Fixed | Reading the existing 2D map against the spec |
 | 13 | 🟠 High | 3D / UI | Fixed | Console error while drawing the real plan |
 | 14 | 🟡 Low | Repo hygiene | **Fixed — self-inflicted** | Console output showed mangled characters |
+| 15 | ✅ Low | Test quality | Fixed | A comment named a hook that does not exist |
+| 16 | ✅ Low | Repo hygiene | **Fixed - self-inflicted** | Reported a mojibake bug that did not exist |
+| 17 | 🟠 High | Map / data honesty | Fixed | Web research on Galgotias University vs the strings the app still shipped |
 
 ---
 
@@ -461,11 +464,122 @@ replacement characters. None remain.
 the second time a bulk PowerShell edit has caused damage (see #9), for a different
 reason, and both times the only thing that caught it was reading the file back.
 
+## #15 · A test comment named an environment variable that does not exist
+
+**Severity** 🟢 Low · **Area** Test quality · **Status** Fixed
+
+**Symptom** `tests/google-auth-endpoint.test.ts` stated the server "is pointed at
+[the test JWKS] through `CAMPUSFLOW_GOOGLE_JWKS_URL`". No such variable exists
+anywhere in the repository.
+
+**Root cause** The test actually overrides the key set by intercepting
+`globalThis.fetch`, which was done deliberately and is sound. The comment described
+an approach that was considered and not used, and was never corrected.
+
+**Impact** None on behaviour. The cost is that the next person to touch the test
+would look for a hook that isn't there, and might add one — creating two ways to do
+the same thing.
+
+**Fix** Rewrote the comment to describe the mechanism actually in use. The new
+`tests/firebase-auth-endpoint.test.ts` states the distinction explicitly, because
+there the distinction matters: the key set is a test seam, but the project id is a
+real environment variable and therefore the trust decision.
+
+**Prevention** A comment describing test wiring is part of the test. When the
+mechanism changes, so does the comment. `tests/docs.test.ts` cannot catch this one,
+because the prose it checks is documentation, not source comments.
+
+## #16 · I reported a mojibake bug that did not exist ⚠️ self-inflicted
+
+**Severity** 🟢 Low · **Area** Repo hygiene · **Status** Fixed
+
+**Symptom** I told the user that `src/lib/supabase.ts` and `src/lib/telemetry.ts`
+contained a corrupted em dash, and recommended they fix it. Neither file was
+corrupted.
+
+**Root cause** The PowerShell console cannot render U+2014 and prints `?` instead.
+I read the console output, saw the mangling, and reported it — without doing the
+byte-level check I had already used successfully elsewhere in the same session.
+Worse, I had written in #14 that a real corruption had been caught precisely by
+scanning for U+FFFD, so the correct method was known and not applied.
+
+**Fix** Checked with `[System.IO.File]::ReadAllText` and a codepoint scan: both files
+are clean UTF-8, containing only U+2014 EM DASH. Reported the correction plainly
+rather than quietly dropping it. No code changed, because there was no defect.
+
+**Prevention** Never diagnose an encoding problem from console output. Read the file
+as UTF-8 and enumerate the actual codepoints:
+
+```powershell
+[regex]::Matches([System.IO.File]::ReadAllText($p), "[^\x00-\x7F]") |
+  ForEach-Object { "U+{0:X4}" -f [int][char]$_.Value }
+```
+
+If that list contains only expected typography (U+2014, U+2705, U+2192, U+00B7),
+the file is fine. Only U+FFFD indicates real corruption.
+
+## #17 · The map drew a real campus while the app still claimed a fictional one
+
+**Severity** 🟠 High · **Area** Map / data honesty · **Status** Fixed
+
+**Symptom** The Campus view rendered Galgotias University — real OpenStreetMap
+geometry, real satellite imagery, real `B-Block (Galgotias University)` labels —
+while the rest of the product still described a university that does not exist.
+The AI assistant opened with "the official intelligent assistant for Metropolitan
+University Central Campus", all three chatbot personas were scoped to "Metropolitan
+University", the ticket header in `MyActivity` was stamped `METROPOLITAN
+UNIVERSITY`, the discovery grid read `METROPOLITAN CENTRAL`, the sign-in field
+suggested `@metrouni.edu`, the video poster's SVG caption read `Metropolitan
+Central Quad`, and `campusTimezone()` fell back to `America/New_York` — a
+timezone 9 hours 30 minutes off the campus it was booking times for.
+
+**Root cause** #12 replaced the fake *geometry* but not the fake *campus*. The
+rename to Galgotias University was applied to the seed data and the docs, and the
+strings in the assistant, the chatbot, the UI chrome and the timezone fallback were
+never revisited. Two of these were load-bearing rather than cosmetic:
+`campusTimezone()` is what resolves wall-clock booking times, so its fallback was
+quietly shifting appointments by half a day, and an existing `data/campusflow.json`
+still carried the fictional campus name, code and `America/New_York` on disk
+because `migrateSchema()` is additive only and would never correct an existing
+record.
+
+**Fix**
+1. Every remaining "Metropolitan" string now names Galgotias University, Greater
+   Noida. The two chatbot personas and the server-side system instruction also drop
+   the invented "Williamson Central Library" — the university publishes a
+   **Central Library**, and having both on screen was two different answers to the
+   same question.
+2. The assistant is now told the truth about the map it describes: the campus is
+   real, the counter locations are projected until confirmed, only five features
+   have surveyed positions, and it must not invent a building, room or distance.
+   That instruction was the fiction's root: a model told it is the assistant for a
+   fictional campus will confidently describe one.
+3. `campusTimezone()` falls back to `SEED_CAMPUS.timezone`, not to New York.
+4. `migrateSchema()` now reconciles campus identity and inserts seeded buildings
+   the stored copy predates. Existing buildings are left untouched, so an
+   administrator's confirmed position link survives the upgrade.
+5. Demo addresses moved to the `.invalid` TLD reserved by RFC 2606. The old
+   `@metrouni.edu` domain was a real institution's domain being used for logins
+   that can send password resets and notifications; `.invalid` cannot resolve, so a
+   demo account can never be a deliverable mailbox.
+
+**A latent bug found on the way.** Renaming the demo addresses exposed that
+`migrateSchema()` only *inserted* missing demo users. The user rows already existed
+on disk with the old addresses, so the rename would have stranded every existing
+install — sign-in would have failed for everyone with no error explaining why. It
+now refreshes the seeded fields on those known ids. This was not a bug I was
+looking for; it was a bug the rename would have shipped.
+
+**Regression tests** `campus-places.test.ts` asserts the new directory cannot carry
+a coordinate, that every entry is sourced, and that every pin traces to a surveyed
+element. `docs.test.ts` continues to enforce that the documentation matches.
+
 ## Not bugs — verified correct behaviour
 Recorded so they are not "fixed" later by mistake.
 
 | Observation | Why it is correct |
 | --- | --- |
+| `?` in place of `✅`, `→`, `—` in console output | The Windows console cannot render them. The files are clean UTF-8; see #16 |
 | Empty alternatives list at night | A closed service is reported unusable, not recommended. Suggesting it would violate `PRD.md` §5 |
 | 403 on a raw `fetch()` from the console | The CSRF guard working. The app's own path attaches the token |
 | `storage: ephemeral` on Vercel | `paths.ts` correctly detecting a read-only bundle, and disclosing it |

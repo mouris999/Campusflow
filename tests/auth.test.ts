@@ -10,10 +10,10 @@ let admin: string;
 let serviceId = '';
 let otherServiceId = '';
 
-const STUDENT = { email: 'alex.rivera@metrouni.edu', password: 'student123' };
-const OTHER_STUDENT = { email: 'maya.lin@metrouni.edu', password: 'student123' };
-const STAFF = { email: 'sarah.chen@metrouni.edu', password: 'staff123' };
-const ADMIN = { email: 'm.vance@metrouni.edu', password: 'admin123' };
+const STUDENT = { email: 'alex.rivera@galgotiasuniversity.invalid', password: 'student123' };
+const OTHER_STUDENT = { email: 'maya.lin@galgotiasuniversity.invalid', password: 'student123' };
+const STAFF = { email: 'sarah.chen@galgotiasuniversity.invalid', password: 'staff123' };
+const ADMIN = { email: 'm.vance@galgotiasuniversity.invalid', password: 'admin123' };
 
 before(async () => {
   app = await createIsolatedServer();

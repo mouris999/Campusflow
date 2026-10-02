@@ -58,12 +58,12 @@ Shown on the sign-in screen by `GET /api/auth/demo-accounts`:
 
 | Role | Email | Password |
 | --- | --- | --- |
-| Student | `alex.rivera@metrouni.edu` | `student123` |
-| Staff | `sarah.chen@metrouni.edu` | `staff123` |
-| Admin | `m.vance@metrouni.edu` | `admin123` |
+| Student | `alex.rivera@galgotiasuniversity.invalid` | `student123` |
+| Staff | `sarah.chen@galgotiasuniversity.invalid` | `staff123` |
+| Admin | `m.vance@galgotiasuniversity.invalid` | `admin123` |
 
 Also seeded and usable for testing, though not listed on the sign-in screen:
-`maya.lin@metrouni.edu` and `david.okafor@metrouni.edu` (both `student123`).
+`maya.lin@galgotiasuniversity.invalid` and `david.okafor@galgotiasuniversity.invalid` (both `student123`).
 
 Set `CAMPUSFLOW_DEMO_AUTH=false` to disable demo sign-in entirely.
 
@@ -177,14 +177,38 @@ labelled as estimates.
 | Queue, wait, traffic, peak figures | Live CampusFlow API |
 | Building **heights** | Surveyed where OSM records one; otherwise one documented default, labelled "assumed" |
 | CampusFlow service **positions** | Projected from the 2D layout until an administrator confirms a real building, then labelled "verified" |
+| Campus **places** — schools, centres, facilities | Named by Galgotias University, each with a link to the page it came from |
+
+### The campus directory
+
+Geometry says where the buildings are. It cannot say what the university *is*.
+OpenStreetMap names five features on this campus out of 336 footprints — the rest
+are tagged with nothing but `building=house` — so a plan drawn from the survey
+alone cannot name the School of Law, the Central Library or the Cisco Centre of
+Excellence.
+
+The service map therefore carries a directory of **72 real places** from the
+university's own published pages in `src/data/campus-places.json`: 27 schools, 8
+industry-integrated academic centres, 4 research units, and the registrar,
+examination cell, councils, NCC and NSS, the Central Library, Galgotias Dining,
+the health centre, the sports grounds, the hostel, the shops, the bank and the bus
+services.
+
+Five of those are pinned, because the survey names them. The other 67 are listed
+with a source link and an explicit `position not confirmed`, and are given no pin.
+The schema has no coordinate field at all, so a pin can only ever come from a
+surveyed OpenStreetMap element — an invented position is not representable rather
+than merely discouraged. `campus-places.test.ts` enforces all three properties.
+
+### What the survey does not cover
 
 OpenStreetMap names only six features on this campus - `B-Block`, `C-Block`,
 `School of Hospitality`, `Sports Ground`, `BasketBall Ground` and
-`Galgotias University`. **Block A, the School of Computing, E-Cell, a library, a
-canteen and lawn tennis are not in the source data**, so they are not placed at
-invented coordinates. An administrator picks the real footprint from the Campus
-view, which stores a verified, audited link. The other ~330 real footprints are
-drawn and available to link.
+`Galgotias University`. **Block A, E-Cell, lawn tennis and most of the university's
+buildings are not in the source data**, so they are not placed at invented
+coordinates. An administrator picks the real footprint from the Campus view,
+which stores a verified, audited link. The other ~330 real footprints are drawn
+and available to link.
 
 A building with no linked service shows **no** wait or queue figure at all,
 because that would be an invented number.

@@ -62,7 +62,13 @@ export interface CampusGeometry {
   parking: CampusArea[];
   wood: CampusArea[];
   trees: CampusPoint[];
-  other: (CampusArea & { kind: string })[];
+  /**
+   * Everything else the capture kept. Mixed on purpose: some entries are
+   * polygons with a footprint, and some are bare points, because OpenStreetMap
+   * maps some campus features - the School of Hospitality among them - as nodes
+   * with no outline. A renderer must handle both rather than assume a ring.
+   */
+  other: Array<CampusArea & { kind: string; x?: number; y?: number }>;
 }
 
 import geometryJson from '../data/campus-geometry.json' with { type: 'json' };

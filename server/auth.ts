@@ -351,10 +351,19 @@ export function csrfGuard(req: Request, res: Response, next: NextFunction): void
   });
 }
 
-/** True for the sign-in route, whether mounted at /auth or behind /api. */
+/**
+ * Sign-in routes, mounted at /auth or behind /api.
+ *
+ * These establish a session rather than using one, so they are exempt from the
+ * token check; the Origin check still applies. Any new entry here is a security
+ * decision, which is why `tests/auth.test.ts` and `csrf-coverage.test.ts` both
+ * assert the list rather than assuming it.
+ */
+const SIGN_IN_ROUTES = ['/auth/login', '/auth/firebase'];
+
 function isSignInRoute(req: Request): boolean {
   const path = (req.originalUrl ?? req.url ?? '').split('?')[0];
-  return path === '/auth/login' || path === '/api/auth/login';
+  return SIGN_IN_ROUTES.some(route => path === route || path === `/api${route}`);
 }
 
 /**

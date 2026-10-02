@@ -68,6 +68,8 @@
 | **i18n string catalogue** | ⏳ | English only; no catalogue, no Hindi. Dates are campus-timezone aware |
 | **Self-service data export / delete** | ⏳ | Pseudonymous IDs are used and the API is structured for it, but no user-facing surface exists |
 | **Staff console hotkeys N / R / S** | ⏳ | Spacebar-to-call-next exists; the full set does not |
+| **Enable Google sign-in in production** | ⛔ | Code and tests are complete (249/249 green), but `CAMPUSFLOW_FIREBASE_PROJECT_ID` is a **server process env var** and nothing in the server loads `.env`. Until it is set on Vercel, `POST /api/auth/firebase` answers **503** and the endpoint is inert. The `VITE_FIREBASE_*` values in `.env` are already real and must match |
+| **Firebase authorised domains** | ⏳ | The Firebase project must list `campus-flow-sigma-six.vercel.app` and `localhost` as authorised domains, and have the Google provider enabled. Until then the popup fails with `unauthorized-domain`, which the UI reports honestly |
 
 ## 4. Deliberately not doing
 

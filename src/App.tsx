@@ -39,6 +39,7 @@ const MainAppContent: React.FC = () => {
     authStatus,
     authError,
     signIn,
+    signInWithGoogleToken,
     isLoading,
     refreshData
   } = useApp();
@@ -63,7 +64,13 @@ const MainAppContent: React.FC = () => {
 
   // Unauthenticated visitors get the sign-in screen and nothing else.
   if (authStatus === 'anonymous' || !currentUser) {
-    return <SignInScreen signIn={signIn} sessionError={authError} />;
+    return (
+      <SignInScreen
+        signIn={signIn}
+        signInWithGoogleToken={signInWithGoogleToken}
+        sessionError={authError}
+      />
+    );
   }
 
   const role = currentUser.role;

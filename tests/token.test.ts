@@ -8,8 +8,8 @@ let other: string;
 let canteenId = '';
 let libraryId = '';
 
-const STUDENT = { email: 'alex.rivera@metrouni.edu', password: 'student123' };
-const OTHER = { email: 'maya.lin@metrouni.edu', password: 'student123' };
+const STUDENT = { email: 'alex.rivera@galgotiasuniversity.invalid', password: 'student123' };
+const OTHER = { email: 'maya.lin@galgotiasuniversity.invalid', password: 'student123' };
 
 /** Clears the caller's active tickets so a test can start from a known state. */
 async function clearTickets(cookie: string, serviceId: string) {
@@ -80,7 +80,7 @@ test('the token endpoint reflects live server state, not browser memory', async 
   assert.equal(mine.body.tokens[0].token, joined.body.entry.ticket_number);
 
   // Staff calling the next student must change the phase the student sees.
-  await authedPost(app.base.startsWith('x') ? '' : (await signIn(app.base, 'sarah.chen@metrouni.edu', 'staff123')).cookie, `${app.base}/queue/call-next`, {
+  await authedPost(app.base.startsWith('x') ? '' : (await signIn(app.base, 'sarah.chen@galgotiasuniversity.invalid', 'staff123')).cookie, `${app.base}/queue/call-next`, {
     service_id: libraryId,
     counter_number: 1
   });
@@ -159,7 +159,7 @@ test('re-joining after finishing a previous visit creates a new ticket', async (
   assert.equal(first.status, 201);
   const entryId = first.body.entry.id;
 
-  const staff = (await signIn(app.base, 'sarah.chen@metrouni.edu', 'staff123')).cookie;
+  const staff = (await signIn(app.base, 'sarah.chen@galgotiasuniversity.invalid', 'staff123')).cookie;
   await authedPost(staff, `${app.base}/queue/call-next`, { service_id: service.id, counter_number: 1 });
   await authedPost(staff, `${app.base}/queue/${entryId}/start`, {});
   const done = await authedPost(staff, `${app.base}/queue/${entryId}/complete`, {});

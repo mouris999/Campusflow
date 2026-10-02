@@ -4,11 +4,10 @@
  *
  * Why this exists
  * ---------------
- * CampusFlow's campus ("Metropolitan University Central Campus") is fictional and
- * has no real-world coordinates. To show real satellite imagery and real building
- * shapes, geometry has to come from an authoritative source rather than from
- * anything invented here. OpenStreetMap is authoritative, openly licensed (ODbL),
- * and needs no API key.
+ * The campus is real: Galgotias University, Greater Noida. To show real satellite
+ * imagery and real building shapes, geometry has to come from an authoritative
+ * source rather than from anything invented here. OpenStreetMap is
+ * authoritative, openly licensed (ODbL), and needs no API key.
  *
  * The output is committed, so the running app never depends on Overpass being up.
  * Swap this file for a higher-fidelity capture (or official CAD) later without

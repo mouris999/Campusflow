@@ -21,6 +21,7 @@
 | Icons | lucide-react | 0.546 | Consistent stroke weight, tree-shakeable |
 | 3D | three.js | 0.186 | WebGL campus scene; code-split so it never blocks first paint |
 | Campus geometry | OpenStreetMap (ODbL) | captured 2026-09-30 | Real footprints, roads and land use; committed, not fetched at runtime |
+| Campus places | Galgotias University published pages | committed | Real schools, centres and facilities; each entry carries its source URL and **no coordinate field at all** |
 | Satellite imagery | Esri World Imagery | runtime tiles | Real aerial imagery, no API key; attribution displayed |
 
 ### Deliberately rejected
@@ -43,17 +44,19 @@ src/                       client
   context/AppContext.tsx   session, data, request() helper (attaches CSRF)
   context/TrafficContext.tsx  traffic/peak/alternatives state
   components/              33 components (see DESIGN.md §6)
-  lib/                     api, offline, pendingActions
+  lib/                     api, offline, pendingActions, telemetry, firebaseAuth
   types/                   shared domain types
 server/
   app.ts                   shared Express factory (dev + Vercel)
   api.ts                   all REST routes, auth guards, health
   auth.ts                  scrypt, signed sessions, CSRF, RBAC
+  firebase-auth.ts         Firebase ID token verification + role mapping
+  jwks.ts                  JWKS fetch, JWT header/claims parsing, signature check
   db.ts                    schema, seed, queries, audit, analytics
   paths.ts                 writable data-dir resolution, ephemeral detection
   intelligence-api.ts      traffic/peak/alternatives/intent routes
   intelligence/            12 framework-free engine modules
-tests/                     11 suites, 161 tests
+tests/                     17 suites, 249 tests
 docs/KPIS.md               formula for every displayed figure
 ```
 
@@ -109,6 +112,33 @@ public by deliberate decision, visible in the source.
   students' names and IDs **server-side**. The raw record is never serialised to
   a student caller.
 - **Login rate limiting** — per account and per IP, with backoff.
+- **Google sign-in (optional)** — `POST /api/auth/firebase`, verified in
+  `server/firebase-auth.ts`. The browser runs the Firebase Auth popup
+  (`src/lib/firebaseAuth.ts`) and posts the resulting **Firebase** ID token; the
+  server verifies it and then issues the **same signed CampusFlow session** a
+  password sign-in would, so every guard above applies unchanged.
+  - A Firebase token is not a Google Identity Services token: its issuer is
+    `https://securetoken.google.com/<projectId>`, not `accounts.google.com`, and
+    its audience is the bare project id. It needs its own verifier.
+  - **The project pin is load-bearing.** Every Firebase project shares one JWKS
+    endpoint, so a valid signature alone proves only that *some* Firebase project
+    signed the token. `aud` and `iss` are both compared against
+    `CAMPUSFLOW_FIREBASE_PROJECT_ID`, which binds the token to exactly one
+    project. Without it, an attacker could stand up their own free project, create
+    a user called `admin@metrouni.edu`, and be handed an admin session.
+  - Verification also checks RS256 (refusing `alg:none` and algorithm
+    substitution), expiry, and `email_verified`, and **fails closed**: an
+    unreachable key service rejects the token rather than admitting an
+    unverified one. An unset project id disables the flow.
+  - **Google proves identity, never authority.** The role is read from the
+    campus database, never from the provider or the token's claims, and an address
+    with no account is refused rather than auto-provisioned.
+  - Password sign-in remains fully supported; Google is an alternative door into
+    the same session, not a replacement for it. The button renders nothing when
+    Firebase is unconfigured, so such a deployment keeps the password form only.
+  - Sign-in routes are exempt from the CSRF *token* check only (they establish a
+    session rather than using one); the `Origin` check still applies. The list
+    lives in `SIGN_IN_ROUTES` in `auth.ts` and is asserted by tests.
 
 ## 5. Real-time
 
